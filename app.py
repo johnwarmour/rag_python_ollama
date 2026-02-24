@@ -272,7 +272,8 @@ def embed_file(file_name: str) -> tuple[bool, str]:
             json={
                 "user_id": user_id,
                 "file_name": file_name
-            }
+            },
+            timeout=300
         )
 
         if response.status_code == 200:

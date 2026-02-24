@@ -7,7 +7,6 @@ from time import sleep
 from random import choice
 from typing import Generator
 
-from langchain_ollama import ChatOllama
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.language_models.chat_models import BaseChatModel as T_LLM
 
@@ -15,13 +14,14 @@ from logger import get_logger
 log = get_logger(name="core_llm")
 
 
-def get_llm(model_name: str, context_size: int,
+def get_llm(model_name: str, provider: str, context_size: int,
             temperature: float, verify_connection: bool = False) -> T_LLM:
     """Get the LLM model with the specified parameters.
 
     Args:
         model_name (str): The name of the LLM model to use.
-        context_size (int): The maximum context size for the model.
+        provider (str): The LLM provider ("ollama", "openai", "anthropic", "google").
+        context_size (int): The maximum context size for the model (Ollama only).
         temperature (float): The temperature setting for the model.
         verify_connection (bool): Whether to verify the connection to the model.
 
@@ -29,11 +29,31 @@ def get_llm(model_name: str, context_size: int,
         BaseChatModel: An instance of the LLM model configured with the specified parameters.
     """
 
-    log.info(f"Initializing LLM(model={model_name}, ctx_size={context_size}, temp={temperature})")
-    model = ChatOllama(
-        base_url="http://host.docker.internal:11434",  # Use host's IP for Docker
-        model=model_name, num_ctx=context_size, temperature=temperature, keep_alive=-1
-    )
+    log.info(f"Initializing LLM(provider={provider}, model={model_name}, temp={temperature})")
+
+    if provider == "ollama":
+        from langchain_ollama import ChatOllama
+        model = ChatOllama(
+            base_url="http://host.docker.internal:11434",  # Use host's IP for Docker
+            model=model_name, num_ctx=context_size, temperature=temperature, keep_alive=-1
+        )
+
+    elif provider == "openai":
+        from langchain_openai import ChatOpenAI
+        model = ChatOpenAI(model=model_name, temperature=temperature)
+
+    elif provider == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+        model = ChatAnthropic(model=model_name, temperature=temperature)
+
+    elif provider == "google":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        model = ChatGoogleGenerativeAI(model=model_name, temperature=temperature)
+
+    else:
+        raise ValueError(
+            f"Unknown LLM provider: '{provider}'. Choose from: ollama, openai, anthropic, google"
+        )
 
     if verify_connection:
         try:

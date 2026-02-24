@@ -18,10 +18,11 @@ bcrypt==4.3.0
 pytz==2025.2
 streamlit==1.45.1
 
-# Backend Req: One of these two as per your convenience:
-# I have used ollama for 'dev' and google-genai for 'deploy'
+# Backend Req: LLM providers — install the ones you need:
 langchain-ollama==0.3.3
 langchain-google-genai==2.1
+langchain-openai
+langchain-anthropic
 
 
 # Others:

@@ -15,13 +15,22 @@ This module stores all configurable constants related to:
 
 
 # Model configuration::
-LLM_CHAT_MODEL_NAME: str = "gemma3:latest"              # Chatting model
+LLM_PROVIDER: str = "ollama"                         # Options: "ollama", "openai", "anthropic", "google"
+
+LLM_CHAT_MODEL_NAME: str = "gemma3:12b"              # Chatting model
+# ollama    → "gemma3:latest"
+# openai    → "gpt-4o"
+# anthropic → "claude-sonnet-4-6"
+# google    → "gemini-2.0-flash"
 LLM_CHAT_TEMPERATURE: float = 0.75
-LLM_SUMMARY_MODEL_NAME: str = "gemma3:latest"           # History Summarization model
+
+LLM_SUMMARY_MODEL_NAME: str = "gemma3:12b"           # History Summarization model
 LLM_SUMMARY_TEMPERATURE: float = 0.5
+
 EMB_MODEL_NAME: str = "mxbai-embed-large:latest"        # Embeddings model
 
 # The max token count which shall be allowed after 'chat_history + input + context'.
+# Note: only applies to Ollama (num_ctx). API providers manage context server-side.
 MAX_CONTENT_SIZE: int = 14000
 
 
@@ -34,8 +43,9 @@ VERIFY_EMB_CONNECTION: bool = False
 
 
 # Document Chunking properties:
-DOC_CHAR_LIMIT: int = 2000                              # Char limit for each doc.
-DOC_OVERLAP_NO: int = 250                               # Char limit for chunk overlap.
+DOC_CHAR_LIMIT: int = 1500                              # Char limit for each doc.
+DOC_OVERLAP_NO: int = 150                               # Char limit for chunk overlap.
+EMBED_BATCH_SIZE: int = 32                              # Num of chunks to embed per batch.
 
 
 # Document Retrieval properties:

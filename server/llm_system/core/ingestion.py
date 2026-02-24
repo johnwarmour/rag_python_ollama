@@ -8,6 +8,7 @@ from typing import List
 
 from llm_system.utils.loader import load_file
 from llm_system.utils.splitter import split_text
+from llm_system.config import EMBED_BATCH_SIZE
 
 # For type hinting
 from llm_system.core.database import VectorDB
@@ -50,16 +51,23 @@ def ingest_file(user_id: str, file_path: str, vectorstore: VectorDB,
     if not status:
         return False, [], message
 
-    # Add the split documents to the vector database:
+    # Add the split documents to the vector database in batches:
     try:
-        doc_ids = vectorstore.db.add_documents(split_docs, embeddings=embeddings)
+        all_doc_ids = []
+        total = len(split_docs)
+        for i in range(0, total, EMBED_BATCH_SIZE):
+            batch = split_docs[i:i + EMBED_BATCH_SIZE]
+            batch_ids = vectorstore.db.add_documents(batch, embeddings=embeddings)
+            all_doc_ids.extend(batch_ids)
+            log.info(f"Embedded batch {i // EMBED_BATCH_SIZE + 1}/{(total + EMBED_BATCH_SIZE - 1) // EMBED_BATCH_SIZE} ({len(batch)} chunks) from {file_path}.")
+
         if vectorstore.save_db_to_disk():
-            log.info(f"Ingested {len(split_docs)} documents from {file_path} into the vector database.")
-            return True, doc_ids, f"Ingested {len(split_docs)} documents successfully."
+            log.info(f"Ingested {total} chunks from {file_path} into the vector database.")
+            return True, all_doc_ids, f"Ingested {total} documents successfully."
         else:
             log.error("Failed to save the vector database to disk after ingestion.")
             return False, [], "Failed to save the vector database to disk after ingestion."
-            
+
     except Exception as e:
         log.error(f"Failed to ingest documents: {e}")
         return False, [], f"Failed to ingest documents: {e}"

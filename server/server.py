@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 import json
+import asyncio
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 
@@ -54,6 +55,7 @@ async def lifespan(app: FastAPI):
 
     app.state.llm_chat = get_llm(
         model_name=config.LLM_CHAT_MODEL_NAME,
+        provider=config.LLM_PROVIDER,
         context_size=config.MAX_CONTENT_SIZE,
         temperature=config.LLM_CHAT_TEMPERATURE,
         verify_connection=config.VERIFY_LLM_CONNECTION
@@ -460,12 +462,14 @@ async def embed_file(embed_request: EmbedRequest, request: Request):
 
     log.info(f"/embed Requested by '{user_id}' for file '{file_name}'")
 
-    # Call the ingest_file function to process the file
-    status, doc_ids, message = ingest_file(
-        user_id=user_id,
-        file_path=files.get_file_path(user_id=user_id, file_name=file_name),
-        vectorstore=request.app.state.vector_db,
-        embeddings=request.app.state.vector_db.get_embeddings()
+    # Run ingest_file in a thread so it doesn't block the async event loop.
+    # Embedding large PDFs can take minutes on CPU and would otherwise freeze uvicorn.
+    status, doc_ids, message = await asyncio.to_thread(
+        ingest_file,
+        user_id,
+        files.get_file_path(user_id=user_id, file_name=file_name),
+        request.app.state.vector_db,
+        request.app.state.vector_db.get_embeddings()
     )
 
     if status:
