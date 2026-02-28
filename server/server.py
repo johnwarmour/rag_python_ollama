@@ -2,8 +2,10 @@
 # uvicorn server:app --reload
 # Avoid using --reload flag, because, LLMs will keep reloading and system will overheat.
 
+import os
+import mimetypes
 from fastapi import FastAPI, File, UploadFile, Form, Request, Query
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 import json
@@ -579,6 +581,30 @@ async def get_file_iframe(file_request: FileIframeRequest):
         return JSONResponse(content={"iframe": message}, status_code=200)
     else:
         return JSONResponse(content={"error": message}, status_code=404)
+
+
+# Endpoint to serve an original uploaded file inline (so the browser can open it):
+@app.get("/file")
+async def serve_file(user_id: str = Query(...), file_name: str = Query(...)):
+    """Endpoint to serve the original uploaded file for inline viewing.
+    - Get request expects `user_id` and `file_name` as query parameters.
+    - Returns the file with appropriate Content-Type so browsers can display it.
+    """
+    log.info(f"/file Requested by '{user_id}' for file '{file_name}'")
+    file_path = files.get_file_path(user_id=user_id, file_name=file_name)
+
+    if not os.path.isfile(file_path):
+        return JSONResponse(content={"error": "File not found"}, status_code=404)
+
+    media_type, _ = mimetypes.guess_type(file_name)
+    if not media_type:
+        media_type = "application/octet-stream"
+
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+        headers={"Content-Disposition": f"inline; filename=\"{file_name}\""},
+    )
 
 
 # ------------------------------------------------------------------------------

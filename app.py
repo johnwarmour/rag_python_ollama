@@ -2,6 +2,7 @@ import json
 import time
 import requests
 import streamlit as st
+import urllib.parse
 from typing import Optional, List, Literal
 
 # import server.logger as logger
@@ -338,6 +339,45 @@ def delete_file_from_server(file_name: str) -> tuple[bool, str]:
         return False, str(e)
 
 
+def render_source_doc(doc: dict):
+    """Render a source document card: document name, page, content snippet, and open link."""
+    metadata = doc.get('metadata', {})
+    content = doc.get('page_content', '')
+
+    doc_name = metadata.get('source') or metadata.get('file_path', 'Unknown document')
+    page = metadata.get('page')  # 0-indexed for PDFs, None for txt/md
+
+    # Build URL to open the original file in a new tab
+    doc_url = (
+        f"{server_ip}/file"
+        f"?user_id={urllib.parse.quote(user_id)}"
+        f"&file_name={urllib.parse.quote(doc_name)}"
+    )
+    if page is not None:
+        doc_url += f"#page={page + 1}"  # PDF viewers use 1-indexed page fragments
+
+    # Header: document name + page number + open button
+    info_col, btn_col = st.columns([7, 3])
+    with info_col:
+        if page is not None:
+            st.markdown(f"**{doc_name}** — Page {page + 1}")
+        else:
+            st.markdown(f"**{doc_name}**")
+    with btn_col:
+        st.link_button("Open ↗", doc_url, use_container_width=True)
+
+    st.divider()
+
+    # Content snippet
+    st.markdown(content)
+
+    # Extra metadata as small caption (fields not already shown in the header)
+    skip = {'source', 'file_path', 'page', 'user_id'}
+    extras = {k: v for k, v in metadata.items() if k not in skip and v}
+    if extras:
+        st.caption("  ·  ".join(f"{k}: {v}" for k, v in extras.items()))
+
+
 @st.cache_data(ttl=60 * 10, show_spinner=False)
 def get_iframe(file_name: str, num_pages: int = 5) -> tuple[bool, str]:
     """Get the iframe HTML for the PDF file."""
@@ -529,15 +569,11 @@ for ind, message in enumerate(st.session_state.chat_history):
                     # Documents:
                     if documents:
                         tabs = st.expander("🗃️ Sources", expanded=False).tabs(
-                            tabs=[f"Document {i+1}" for i in range(len(documents))]
+                            tabs=[f"Source {i+1}" for i in range(len(documents))]
                         )
                         for i, doc in enumerate(documents):
                             with tabs[i]:
-                                st.subheader(":blue[Content:]")
-                                st.markdown(doc['page_content'])
-                                st.divider()
-                                st.subheader(":blue[Source Details:]")
-                                st.json(doc['metadata'], expanded=False)
+                                render_source_doc(doc)
 
 
 if user_message := st.chat_input(
@@ -638,14 +674,10 @@ if user_message := st.chat_input(
                         if documents:
                             docs = document_holder.expander("🗃️ Sources", expanded=True)
                             tabs = docs.tabs(
-                                tabs=[f"Document {i+1}" for i in range(len(documents))])
+                                tabs=[f"Source {i+1}" for i in range(len(documents))])
                             for i, doc in enumerate(documents):
                                 with tabs[i]:
-                                    st.subheader(":blue[Content:]")
-                                    st.markdown(doc['page_content'])
-                                    st.divider()
-                                    st.subheader(":blue[Source Details:]")
-                                    st.json(doc['metadata'], expanded=False)
+                                    render_source_doc(doc)
 
                         reply_holder.container(border=True).markdown(full + "█")
 
