@@ -501,6 +501,38 @@ async def clear_my_files(user_id: str = Form(...)):
     return JSONResponse(content={"status": "success"}, status_code=200)
 
 
+# Endpoint to delete a single file and its embeddings for a user:
+@app.post("/delete_file")
+async def delete_file(request: Request, user_id: str = Form(...), file_name: str = Form(...)):
+    """Endpoint to delete a specific file and its embeddings.
+    - Post request expects `user_id` and `file_name` as form parameters.
+    - Return JSON with `{"message": "..."}` or `{"error": "..."}` structure.
+    """
+    log.info(f"/delete_file Requested by '{user_id}' for file '{file_name}'")
+
+    file_data = sq_db.get_file_embeddings(user_id=user_id, file_name=file_name)
+    file_id = file_data["file_id"]
+    vector_ids = file_data["embeddings"]
+
+    if file_id == -1:
+        return JSONResponse(content={"error": "File not found"}, status_code=404)
+
+    # Delete embeddings from vector store
+    if vector_ids:
+        vs: VectorDB = request.app.state.vector_db
+        db: T_VECTOR_STORE = vs.get_vector_store()
+        db.delete(vector_ids)
+        vs.save_db_to_disk()
+        sq_db.mark_embeddings_removed(vector_ids=vector_ids)
+
+    # Delete physical file and mark db record as removed
+    files.delete_file(user_id=user_id, file_name=file_name)
+    sq_db.mark_file_removed(user_id=user_id, file_id=file_id)
+
+    log.info(f"/delete_file Deleted '{file_name}' for user '{user_id}'")
+    return JSONResponse(content={"message": f"'{file_name}' deleted successfully."}, status_code=200)
+
+
 # End point to get all the files uploaded by user:
 # This will be called first at initialization, and then after each file upload
 @app.get("/uploads")

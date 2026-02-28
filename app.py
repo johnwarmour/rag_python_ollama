@@ -2,7 +2,6 @@ import json
 import time
 import requests
 import streamlit as st
-from contextlib import contextmanager
 from typing import Optional, List, Literal
 
 # import server.logger as logger
@@ -291,71 +290,52 @@ def embed_file(file_name: str) -> tuple[bool, str]:
 
 def handle_uploaded_files(uploaded_files) -> bool:
     """Handle the uploaded files by uploading them to the server and embedding their content."""
-    progress_status = ""
+    try:
+        with st.status("Processing files...", expanded=True) as upload_status:
+            for i, file in enumerate(uploaded_files):
+                st.write(f"📂 File {i+1} of {len(uploaded_files)}: **{file.name}**")
 
-    with st.chat_message(name='assistant', avatar='./assets/settings_3.png'):
-        with st.spinner("Processing files..."):
-            container = st.empty()
+                st.write("⏳ Uploading...")
+                status, message = upload_file(file)
+                if not status:
+                    raise RuntimeError(f"Upload failed for '{file.name}': {message}")
+                server_file_name = message
+                time.sleep(st.secrets.llm.per_step_delay)
 
-            # Found out later that all this thing can be done with st.status() as status:
-            # But, it does not allow that much customization.
-            @contextmanager
-            def write_progress(msg: str):
-                # Shared variable across multiple steps
-                nonlocal progress_status
-                # Start with ⏳️ to show progress:
-                curr = progress_status + f"- ⏳ {msg}\n"
-                container.container(border=True).markdown(curr)
+                st.write("⏳ Embedding content...")
+                status, message = embed_file(server_file_name)
+                if not status:
+                    raise RuntimeError(f"Embedding failed for '{file.name}': {message}")
+                time.sleep(st.secrets.llm.per_step_delay)
 
-                try:
-                    # Do the actual step (indent of 'with')
-                    yield
-                    # yield is over means, step is done > Update with ✅
-                    progress_status += f"\n- ✅ {msg}\n"
-                    curr = progress_status
-                except Exception as e:
-                    progress_status += f"\n- ❌ {msg}: {e}\n"
-                    raise e
-                finally:
-                    container.container(border=True).markdown(curr)
+                st.write("⏳ Finalizing...")
+                st.session_state.user_uploads = requests.get(
+                    f"{st.session_state.server_ip}/uploads",
+                    params={"user_id": user_id}
+                ).json().get("files", [])
+                time.sleep(st.secrets.llm.end_delay)
 
-            try:
-                for i, file in enumerate(uploaded_files):
-                    progress_status += f"\n📂 Processing file {i+1} of {len(uploaded_files)}...\n"
-                    # log.info(f"Processing file: {file.name}")
+            upload_status.update(label="Files processed successfully!", state="complete", expanded=False)
+        return True
 
-                    # Upload file:
-                    with write_progress("Uploading file..."):
-                        status, message = upload_file(file)
-                        if not status:
-                            raise RuntimeError(f"Upload failed for file: {file.name}")
-                        server_file_name = message
-                        time.sleep(st.secrets.llm.per_step_delay)
+    except Exception as e:
+        st.error(f"Error: {e}", icon="🚫")
+        return False
 
-                    # Embed the file:
-                    with write_progress("Embedding content..."):
-                        status, message = embed_file(server_file_name)
-                        if not status:
-                            raise RuntimeError(f"Embedding failed for file: {file.name}")
-                        time.sleep(st.secrets.llm.per_step_delay)
 
-                    # Any last steps like finalizing or cleanup:
-                    with write_progress("Finalizing the process..."):
-                        # Update data with latest user_upload
-                        st.session_state.user_uploads = requests.get(
-                            f"{st.session_state.server_ip}/uploads",
-                            params={"user_id": user_id}
-                        ).json().get("files", [])
-
-                        # log.info(f"File `{file.name}` processed successfully.")
-                        time.sleep(st.secrets.llm.end_delay)
-
-                return True
-
-            except Exception as e:
-                st.exception(exception=e)
-                st.stop()
-                return False
+def delete_file_from_server(file_name: str) -> tuple[bool, str]:
+    """Delete a file from the server and remove its embeddings."""
+    try:
+        resp = requests.post(
+            f"{server_ip}/delete_file",
+            data={"user_id": user_id, "file_name": file_name}
+        )
+        if resp.status_code == 200:
+            return True, resp.json().get("message", "File deleted.")
+        else:
+            return False, resp.json().get("error", "Unknown error.")
+    except Exception as e:
+        return False, str(e)
 
 
 @st.cache_data(ttl=60 * 10, show_spinner=False)
@@ -393,26 +373,57 @@ with st.sidebar.container(border=True):
 # st.sidebar.divider()
 
 
-# Files Preview:
+# Files Panel:
 st.sidebar.subheader("📂 Files")
 
-selected_file = st.sidebar.selectbox(
-    label="Choose File to ***Preview***",
-    index=0,
-    options=st.session_state.user_uploads,
+# File uploader:
+sidebar_uploads = st.sidebar.file_uploader(
+    "Upload Documents",
+    type=['pdf', 'txt', 'md'],
+    accept_multiple_files=True,
+    label_visibility="collapsed",
 )
+if st.sidebar.button("Upload & Embed", type="primary", disabled=not sidebar_uploads):
+    if handle_uploaded_files(sidebar_uploads):
+        st.toast("Files processed successfully!", icon="✅")
+        st.rerun()
 
-# Tried to show pdf persistently, but it re-renders on each run and page hangs in streaming response:
+st.sidebar.divider()
+
+# File list with per-file delete:
 if not st.session_state.user_uploads:
     st.sidebar.info("No files uploaded yet.", icon="ℹ️")
 else:
-    button = st.sidebar.button("Show Preview")
-    if selected_file and button:
+    for file_name in st.session_state.user_uploads:
+        col1, col2 = st.sidebar.columns([8, 2])
+        col1.caption(file_name)
+        if col2.button("🗑️", key=f"del_{file_name}", help=f"Delete {file_name}"):
+            ok, msg = delete_file_from_server(file_name)
+            if ok:
+                st.session_state.user_uploads = requests.get(
+                    f"{st.session_state.server_ip}/uploads",
+                    params={"user_id": user_id}
+                ).json().get("files", [])
+                st.cache_data.clear()
+                st.toast(f"Deleted '{file_name}'", icon="✅")
+                st.rerun()
+            else:
+                st.sidebar.error(f"Error: {msg}", icon="🚫")
+
+    # Preview section:
+    st.sidebar.divider()
+    selected_file = st.sidebar.selectbox(
+        label="Preview File",
+        index=0,
+        options=st.session_state.user_uploads,
+    )
+    if st.sidebar.button("Show Preview"):
         status, content = get_iframe(selected_file)
         if status:
             st.sidebar.markdown(content, unsafe_allow_html=True)
         else:
             st.sidebar.error(f"Error: **{content}**", icon="🚫")
+
 st.sidebar.divider()
 
 # Dummy Mode Toggle:
@@ -427,8 +438,10 @@ if st.sidebar.button("Clear My Uploads", type="secondary", icon="🗑️"):
             data={"user_id": user_id}
         )
         if resp.status_code == 200:
-            st.success(resp.json().get("message", "Uploads cleared successfully!"), icon="✅")
+            st.session_state.user_uploads = []
             st.cache_data.clear()
+            st.toast("All uploads cleared!", icon="✅")
+            st.rerun()
         else:
             st.error(resp.json().get("error", "Failed to clear Uploads."), icon="🚫")
     except requests.RequestException as e:
@@ -528,32 +541,28 @@ for ind, message in enumerate(st.session_state.chat_history):
 
 
 if user_message := st.chat_input(
-    placeholder="Enter any queries here... You can also attach [pdf, txt, md] files.",
+    placeholder="Ask a question about your uploaded documents...",
     max_chars=1000,
-    accept_file='multiple',
-    file_type=['pdf', 'txt', 'md'],
-    # on_submit=submit_handler
 ):
     # Create Message object from the user input:
-    new_message = Message(
-        type="human",
-        content=user_message.text,
-        filenames=[file.name for file in user_message.files] if user_message.files else None
-    )
+    new_message = Message(type="human", content=user_message)
 
     # Save it to the chat:
     st.session_state.chat_history.append(new_message)
-    # For now, write it on screen:
-    write_as_human(new_message.content, new_message.filenames)
+    # Write it on screen:
+    write_as_human(new_message.content)
     # Clear last documents:
     st.session_state.last_retrieved_docs = []
 
-    # Handle the files if any:
-    if user_message.files:
-        if handle_uploaded_files(user_message.files):
-            st.toast("Files processed successfully!", icon="✅")
-        else:
-            st.error("Error processing files. Please try again.", icon="🚫")
+    # Guard: require at least one uploaded file before calling RAG:
+    if not st.session_state.user_uploads:
+        no_docs_msg = (
+            "No documents uploaded yet. Please upload at least one document using the "
+            "**Files** panel on the left sidebar, then ask your question."
+        )
+        write_as_ai(no_docs_msg)
+        st.session_state.chat_history.append(Message("assistant", no_docs_msg))
+        st.rerun()
 
     # Get response and write it:
     with st.chat_message(name='assistant', avatar='assistant'):

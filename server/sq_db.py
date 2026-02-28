@@ -357,6 +357,45 @@ def get_file_id_by_name(user_id: str, file_name: str) -> int:
         return -1
 
 
+def get_file_embeddings(user_id: str, file_name: str) -> dict:
+    """Get the file_id and embedding vector_ids for a specific available file.
+
+    Args:
+        user_id (str): The ID of the user who owns the file.
+        file_name (str): The name of the file.
+
+    Returns:
+        dict: {"file_id": int, "embeddings": List[str]}
+              file_id is -1 if the file was not found.
+    """
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT file_id FROM uploads
+                WHERE user_id = ? AND filename = ? AND available = 1
+            """, (user_id, file_name))
+            result = cur.fetchone()
+
+            if not result:
+                log.warning(f"File '{file_name}' not found for user '{user_id}'")
+                return {"file_id": -1, "embeddings": []}
+
+            file_id = result[0]
+            cur.execute("""
+                SELECT vector_id FROM embeddings
+                WHERE file_id = ? AND available = 1
+            """, (file_id,))
+            embeddings = cur.fetchall()
+
+            log.info(f"Found file_id={file_id} with {len(embeddings)} embeddings for '{file_name}' / '{user_id}'")
+            return {"file_id": file_id, "embeddings": [e[0] for e in embeddings]}
+
+    except sqlite3.Error as e:
+        log.error(f"SQLite error while getting embeddings for '{file_name}' for user '{user_id}': {e}")
+        return {"file_id": -1, "embeddings": []}
+
+
 def mark_file_removed(user_id: str, file_id: int) -> bool:
     """Marks a file as unavailable (deleted) in the database.
 
