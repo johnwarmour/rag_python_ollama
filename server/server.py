@@ -45,6 +45,15 @@ OLD_FILE_THRESHOLD: int = 3600 * 1  # 24 hours in seconds
 
 
 # ------------------------------------------------------------------------------
+# Auth helpers:
+# ------------------------------------------------------------------------------
+
+def is_admin(user_id: str) -> bool:
+    """Returns True if the given user_id has the 'admin' role."""
+    return sq_db.get_user_role(user_id) == 'admin'
+
+
+# ------------------------------------------------------------------------------
 # FastAPI Startup:
 # ------------------------------------------------------------------------------
 
@@ -89,6 +98,7 @@ async def lifespan(app: FastAPI):
     # Files
     files.check_create_uploads_folder()
     files.delete_empty_user_folders()
+    files.create_user_uploads_folder(user_id="public")  # shared library for admin uploads
 
     # [ Lifespan ]
     yield
@@ -308,14 +318,14 @@ async def login(request: Request, login_request: LoginRequest):
     log.info(f"/login Requested by '{login_id}'")
 
     # Check if the user exists in the database
-    status, msg = sq_db.authenticate_user(user_id=login_id, password=password)
+    status, msg, role = sq_db.authenticate_user(user_id=login_id, password=password)
     if status:
         user_id = login_id
         # Check if folder exists in UPLOADS_DIR with user_id
         files.create_user_uploads_folder(user_id=user_id)
         # Delete any older data if exists
         delete_old_files(user_id=user_id, time=OLD_FILE_THRESHOLD)
-        return JSONResponse(content={"user_id": user_id, "name": msg}, status_code=200)
+        return JSONResponse(content={"user_id": user_id, "name": msg, "role": role}, status_code=200)
     else:
         return JSONResponse(content={"error": msg}, status_code=401)
 
@@ -339,40 +349,6 @@ async def login(request: Request, login_request: LoginRequest):
     #     log.info(f"/login History found for user '{user_id}' with {len(history.messages)} messages")
 
     # return {"user_id": user_id, "chat_history": history.messages}
-
-
-# endpoint for user registration:
-class RegisterRequest(BaseModel):
-    name: str
-    user_id: str
-    password: str
-
-
-@app.post("/register")
-async def register(request: Request, register_request: RegisterRequest):
-    """Endpoint to handle user registration.
-    - Post request expects JSON `{"user_name": "Full Name", "user_id": "any_u_id", "password": "raw_pw"}` structure.
-    - Return JSON with `{"status": "success"}` or `{"error": "message"}` structure.
-    """
-
-    name = register_request.name.strip()
-    user_id = register_request.user_id.strip()
-    password = register_request.password.strip()
-    log.info(f"/register Requested by {name} with '{user_id}'")
-    print(f"Name: {name}, UserID: {user_id}, Password: {password}")
-
-    # Check if the user already exists
-    status = sq_db.check_user_exists(user_id=user_id)
-    if status:
-        log.error(f"/register UserID '{user_id}' already exists.")
-        return JSONResponse(content={"error": "User already exists"}, status_code=400)
-
-    # If user does not exist, add the user to the database
-    status = sq_db.add_user(user_id=user_id, name=name, password=password)
-    if status:
-        return JSONResponse(content={"status": "success"}, status_code=201)
-    else:
-        return JSONResponse(content={"error": "Failed to register user"}, status_code=500)
 
 
 # ------------------------------------------------------------------------------
@@ -429,17 +405,22 @@ async def clear_chat_history(user_id: str = Form(...)):
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...), user_id: str = Form(...)):
     log.info(f"/upload Received file: {file.filename} from user: {user_id}")
+
+    if not is_admin(user_id):
+        return JSONResponse(content={"error": "Forbidden: admin only"}, status_code=403)
+
     filename = file.filename if file.filename else "unknown_file"
 
+    # All uploads stored in the shared public library
     status, message = files.save_file(
-        user_id=user_id,
+        user_id="public",
         file_value_binary=await file.read(),
         file_name=filename
     )
 
     if status:
         filename = message
-        sq_db.add_file(user_id=user_id, filename=filename)
+        sq_db.add_file(user_id="public", filename=filename)
         return JSONResponse(content={"message": filename}, status_code=200)
     else:
         log.error(f"/upload File upload failed for user {user_id}: {filename}")
@@ -464,18 +445,22 @@ async def embed_file(embed_request: EmbedRequest, request: Request):
 
     log.info(f"/embed Requested by '{user_id}' for file '{file_name}'")
 
+    if not is_admin(user_id):
+        return JSONResponse(content={"error": "Forbidden: admin only"}, status_code=403)
+
     # Run ingest_file in a thread so it doesn't block the async event loop.
     # Embedding large PDFs can take minutes on CPU and would otherwise freeze uvicorn.
+    # Ingest under "public" so vector metadata marks this as the shared library.
     status, doc_ids, message = await asyncio.to_thread(
         ingest_file,
-        user_id,
-        files.get_file_path(user_id=user_id, file_name=file_name),
+        "public",
+        files.get_file_path(user_id="public", file_name=file_name),
         request.app.state.vector_db,
         request.app.state.vector_db.get_embeddings()
     )
 
     if status:
-        file_id = sq_db.get_file_id_by_name(user_id=user_id, file_name=file_name)
+        file_id = sq_db.get_file_id_by_name(user_id="public", file_name=file_name)
         for vid in doc_ids:
             sq_db.add_embedding(file_id=file_id, vector_id=vid)
 
@@ -490,29 +475,37 @@ async def embed_file(embed_request: EmbedRequest, request: Request):
 # Data management endpoints:
 # ------------------------------------------------------------------------------
 
-# Endpoint /clear_my_files to clear all files uploaded by user:
+# Endpoint /clear_my_files to clear all files in the shared public library (admin only):
 @app.post("/clear_my_files")
 async def clear_my_files(user_id: str = Form(...)):
-    """Endpoint to clear all files uploaded by user.
-    - Post request expects `user_id` as form parameter.
+    """Endpoint to clear all files in the shared public library.
+    - Post request expects `user_id` as form parameter (used for admin auth).
     - Return JSON with `{"status": "success"}` or `{"error": "message"}` structure.
     """
 
     log.info(f"/clear_my_files Requested by '{user_id}'")
-    delete_old_files(user_id=user_id, time=1)
+
+    if not is_admin(user_id):
+        return JSONResponse(content={"error": "Forbidden: admin only"}, status_code=403)
+
+    delete_old_files(user_id="public", time=1)
     return JSONResponse(content={"status": "success"}, status_code=200)
 
 
 # Endpoint to delete a single file and its embeddings for a user:
 @app.post("/delete_file")
 async def delete_file(request: Request, user_id: str = Form(...), file_name: str = Form(...)):
-    """Endpoint to delete a specific file and its embeddings.
-    - Post request expects `user_id` and `file_name` as form parameters.
+    """Endpoint to delete a specific file and its embeddings from the shared public library.
+    - Post request expects `user_id` (for admin auth) and `file_name` as form parameters.
     - Return JSON with `{"message": "..."}` or `{"error": "..."}` structure.
     """
     log.info(f"/delete_file Requested by '{user_id}' for file '{file_name}'")
 
-    file_data = sq_db.get_file_embeddings(user_id=user_id, file_name=file_name)
+    if not is_admin(user_id):
+        return JSONResponse(content={"error": "Forbidden: admin only"}, status_code=403)
+
+    # All files are stored under the shared "public" library
+    file_data = sq_db.get_file_embeddings(user_id="public", file_name=file_name)
     file_id = file_data["file_id"]
     vector_ids = file_data["embeddings"]
 
@@ -528,10 +521,10 @@ async def delete_file(request: Request, user_id: str = Form(...), file_name: str
         sq_db.mark_embeddings_removed(vector_ids=vector_ids)
 
     # Delete physical file and mark db record as removed
-    files.delete_file(user_id=user_id, file_name=file_name)
-    sq_db.mark_file_removed(user_id=user_id, file_id=file_id)
+    files.delete_file(user_id="public", file_name=file_name)
+    sq_db.mark_file_removed(user_id="public", file_id=file_id)
 
-    log.info(f"/delete_file Deleted '{file_name}' for user '{user_id}'")
+    log.info(f"/delete_file Deleted '{file_name}' (requested by admin '{user_id}')")
     return JSONResponse(content={"message": f"'{file_name}' deleted successfully."}, status_code=200)
 
 
@@ -605,6 +598,83 @@ async def serve_file(user_id: str = Query(...), file_name: str = Query(...)):
         media_type=media_type,
         headers={"Content-Disposition": f"inline; filename=\"{file_name}\""},
     )
+
+
+# ------------------------------------------------------------------------------
+# Admin Management Endpoints:
+# ------------------------------------------------------------------------------
+
+@app.get("/admin/users")
+async def admin_get_users(admin_id: str = Query(...)):
+    """Returns a list of all non-admin users.
+    - Get request expects `admin_id` as query parameter.
+    - Return JSON with `{"users": [{"user_id": "", "name": ""}, ...]}` structure.
+    """
+    log.info(f"/admin/users Requested by '{admin_id}'")
+
+    if not is_admin(admin_id):
+        return JSONResponse(content={"error": "Forbidden: admin only"}, status_code=403)
+
+    users = sq_db.get_all_users(exclude_role='admin')
+    return JSONResponse(content={"users": users}, status_code=200)
+
+
+@app.post("/admin/add_user")
+async def admin_add_user(
+    admin_id: str = Form(...),
+    name: str = Form(...),
+    user_id: str = Form(...),
+    password: str = Form(...),
+):
+    """Creates a new regular user account (admin only).
+    - Post request expects form fields: `admin_id`, `name`, `user_id`, `password`.
+    - Return JSON with `{"status": "success"}` or `{"error": "message"}` structure.
+    """
+    log.info(f"/admin/add_user Requested by '{admin_id}' to create user '{user_id}'")
+
+    if not is_admin(admin_id):
+        return JSONResponse(content={"error": "Forbidden: admin only"}, status_code=403)
+
+    if sq_db.check_user_exists(user_id=user_id):
+        return JSONResponse(content={"error": "User ID already exists"}, status_code=400)
+
+    status = sq_db.add_user(user_id=user_id, name=name, password=password, role='user')
+    if status:
+        log.info(f"/admin/add_user User '{user_id}' created by admin '{admin_id}'")
+        return JSONResponse(content={"status": "success"}, status_code=201)
+    else:
+        return JSONResponse(content={"error": "Failed to create user"}, status_code=500)
+
+
+@app.post("/admin/delete_user")
+async def admin_delete_user(admin_id: str = Form(...), target_user_id: str = Form(...)):
+    """Deletes a regular user account and all associated data (admin only).
+    - Post request expects form fields: `admin_id`, `target_user_id`.
+    - Return JSON with `{"status": "success"}` or `{"error": "message"}` structure.
+    """
+    log.info(f"/admin/delete_user Requested by '{admin_id}' to delete '{target_user_id}'")
+
+    if not is_admin(admin_id):
+        return JSONResponse(content={"error": "Forbidden: admin only"}, status_code=403)
+
+    if is_admin(target_user_id):
+        return JSONResponse(content={"error": "Cannot delete an admin account"}, status_code=400)
+
+    if not sq_db.check_user_exists(user_id=target_user_id):
+        return JSONResponse(content={"error": "User not found"}, status_code=404)
+
+    # Clear in-memory chat history for the target user
+    hs: HistoryStore = app.state.history_store
+    hs.clear_session_history(session_id=target_user_id)
+
+    # Remove any files the user may have (effectively all, via time=1 cutoff)
+    delete_old_files(user_id=target_user_id, time=1)
+
+    # Hard-delete user row (CASCADE removes orphaned upload/embedding rows)
+    sq_db.delete_user(target_user_id)
+
+    log.info(f"/admin/delete_user User '{target_user_id}' deleted by admin '{admin_id}'")
+    return JSONResponse(content={"status": "success"}, status_code=200)
 
 
 # ------------------------------------------------------------------------------

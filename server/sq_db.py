@@ -92,6 +92,16 @@ def create_tables():
         """)
 
         conn.commit()
+
+        # DB Migration: add role column to existing databases
+        # New databases will have the column from the CREATE TABLE statement above.
+        # Existing users without a role default to 'admin' (grandfathered in).
+        try:
+            cur.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'admin'")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists — existing users keep their current role
+
         log.info("Database tables created successfully.")
 
 
@@ -99,13 +109,14 @@ def create_tables():
 # User Management Functions:
 # ------------------------------------------------------------------------------
 
-def add_user(user_id: str, name: str, password: str) -> bool:
+def add_user(user_id: str, name: str, password: str, role: str = 'user') -> bool:
     """Adds a new user to the database.
 
     Args:
         user_id (str): The unique ID of the user.
         name (str): The name of the user.
         password (str): The raw password of the user.
+        role (str): The role of the user ('admin' or 'user'). Defaults to 'user'.
 
     Returns:
         bool: True if the user was added successfully, False otherwise.
@@ -118,9 +129,9 @@ def add_user(user_id: str, name: str, password: str) -> bool:
             hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
 
             cur.execute("""
-                INSERT INTO users (user_id, name, password_hash, last_login)
-                VALUES (?, ?, ?, ?)
-            """, (user_id, name, hashed_password.decode('utf-8'), ist_time))
+                INSERT INTO users (user_id, name, password_hash, last_login, role)
+                VALUES (?, ?, ?, ?, ?)
+            """, (user_id, name, hashed_password.decode('utf-8'), ist_time, role))
             conn.commit()
 
             if cur.rowcount == 0:
@@ -159,7 +170,7 @@ def check_user_exists(user_id: str) -> bool:
         return False
 
 
-def authenticate_user(user_id: str, password: str) -> tuple[bool, str]:
+def authenticate_user(user_id: str, password: str) -> tuple[bool, str, str]:
     """Authenticates a user by checking their ID and password hash.
     + If the user exists and the password matches, it updates the last login time.
 
@@ -168,15 +179,16 @@ def authenticate_user(user_id: str, password: str) -> tuple[bool, str]:
         password (str): The raw password of the user.
 
     Returns:
-        tuple (bool, str):
+        tuple (bool, str, str):
             + bool: True if the authentication is successful, False otherwise.
-            + str: A message indicating the error or The user-name if authentication is successful.
+            + str: The user's name on success, or an error message on failure.
+            + str: The user's role ('admin' or 'user') on success, or '' on failure.
     """
     try:
         with get_connection() as conn:
             # Fetch the hashed password from the database
             cur = conn.cursor()
-            cur.execute("SELECT password_hash, name FROM users WHERE user_id = ?", (user_id,))
+            cur.execute("SELECT password_hash, name, role FROM users WHERE user_id = ?", (user_id,))
             result = cur.fetchone()
 
             if result:
@@ -194,19 +206,95 @@ def authenticate_user(user_id: str, password: str) -> tuple[bool, str]:
                     """, (ist_time, user_id))
                     conn.commit()
                     log.info(f"Authentication successful for '{user_id}' @ {ist_time}")
-                    return True, result[1]  # Return True and the user's name
+                    return True, result[1], result[2]  # name, role
 
                 else:
                     log.warning(f"Authentication failed for user '{user_id}': Incorrect password.")
-                    return False, "Incorrect password."
+                    return False, "Incorrect password.", ""
 
             else:
                 log.warning(f"Authentication failed for user '{user_id}': User does not exist.")
-                return False, "User does not exist."
+                return False, "User does not exist.", ""
 
     except sqlite3.Error as e:
         log.error(f"SQLite error while authenticating user '{user_id}': {e}")
-        return False, "Database error during authentication."
+        return False, "Database error during authentication.", ""
+
+
+def get_user_role(user_id: str) -> str:
+    """Returns the role of a user.
+
+    Args:
+        user_id (str): The ID of the user.
+
+    Returns:
+        str: 'admin', 'user', or '' if the user is not found.
+    """
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT role FROM users WHERE user_id = ?", (user_id,))
+            result = cur.fetchone()
+            if result:
+                return result[0]
+            log.warning(f"User '{user_id}' not found when querying role.")
+            return ''
+    except sqlite3.Error as e:
+        log.error(f"SQLite error while getting role for user '{user_id}': {e}")
+        return ''
+
+
+def get_all_users(exclude_role: str = 'admin') -> List[dict]:
+    """Returns a list of all users excluding those with the specified role.
+
+    Args:
+        exclude_role (str): Role to exclude from results. Defaults to 'admin'.
+
+    Returns:
+        List[dict]: A list of dicts with keys 'user_id' and 'name'.
+    """
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT user_id, name FROM users WHERE role != ?",
+                (exclude_role,)
+            )
+            rows = cur.fetchall()
+            log.info(f"Retrieved {len(rows)} users (excluding role='{exclude_role}')")
+            return [{"user_id": row[0], "name": row[1]} for row in rows]
+    except sqlite3.Error as e:
+        log.error(f"SQLite error while retrieving all users: {e}")
+        return []
+
+
+def delete_user(user_id: str) -> bool:
+    """Hard-deletes a user row from the users table.
+    + CASCADE on uploads and embeddings handles child rows automatically
+      (requires PRAGMA foreign_keys = ON, enabled within this function).
+
+    Args:
+        user_id (str): The ID of the user to delete.
+
+    Returns:
+        bool: True if the user was deleted, False otherwise.
+    """
+    try:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("PRAGMA foreign_keys = ON")
+            cur.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+            conn.commit()
+
+            if cur.rowcount == 0:
+                log.warning(f"User '{user_id}' not found for deletion.")
+                return False
+
+            log.info(f"User '{user_id}' deleted successfully.")
+            return True
+    except sqlite3.Error as e:
+        log.error(f"SQLite error while deleting user '{user_id}': {e}")
+        return False
 
 
 # ------------------------------------------------------------------------------
@@ -505,6 +593,32 @@ def mark_embeddings_removed(vector_ids: List[str]) -> bool:
 # ------------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    # -------------------------------------------------------------------------
+    # FIRST-ADMIN BOOTSTRAP:
+    # To create the first admin user, either:
+    #   1. Run this script directly and it will recreate tables + create an admin.
+    #   2. Use a SQLite CLI: INSERT INTO users VALUES ('admin_id', 'Admin Name',
+    #      '<bcrypt_hash>', datetime('now'), 'admin');
+    # Only the first admin needs to be created this way — all subsequent users
+    # (including more admins) can be created through the app's admin panel.
+    # -------------------------------------------------------------------------
+
+    import sys
+
+    # If called with --bootstrap, create the first admin and exit.
+    if "--bootstrap" in sys.argv:
+        import getpass
+        print("=== First Admin Bootstrap ===")
+        create_tables()
+        admin_id = input("Admin user ID: ").strip()
+        admin_name = input("Admin display name: ").strip()
+        admin_pw = getpass.getpass("Admin password: ").strip()
+        if add_user(user_id=admin_id, name=admin_name, password=admin_pw, role='admin'):
+            print(f"Admin '{admin_id}' created successfully.")
+        else:
+            print(f"Failed to create admin '{admin_id}' (may already exist).")
+        exit(0)
+
     # Clear the database and reCreate:
     print("Setup:")
     delete_database()
@@ -567,9 +681,13 @@ if __name__ == "__main__":
 
     # Check USERs management:
     print("\nChecking user management:")
-    assert add_user("abc", "a b c", "pass") == True, "User addition failed"
+    assert add_user("abc", "a b c", "pass", role='user') == True, "User addition failed"
     assert check_user_exists("abc") == True, "User existence check failed"
-    assert authenticate_user("abc", "pass") == (True, 'a b c'), "User authentication failed"
+    assert authenticate_user("abc", "pass") == (True, 'a b c', 'user'), "User authentication failed"
+    assert get_user_role("abc") == 'user', "get_user_role failed"
+    assert get_all_users() == [{"user_id": "abc", "name": "a b c"}], "get_all_users failed"
+    assert delete_user("abc") == True, "delete_user failed"
+    assert check_user_exists("abc") == False, "User still exists after deletion"
     print("\t - User management checks passed successfully.")
 
     # Cleanup:

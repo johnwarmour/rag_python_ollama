@@ -53,94 +53,47 @@ if "session_id" not in st.session_state:
         )
         st.stop()
 
-    # with st.container(border=True, height=500):
     with st.container(border=True):
-        tabs = st.tabs(tabs=['Register', 'Login'])
+        st.header("🔐 :orange[Login]")
+        ip_user_id = st.text_input(
+            "User ID:", placeholder="Enter your user ID here...",
+            icon="👤", key="login_user_id"
+        )
+        ip_user_pw = st.text_input(
+            "Password:", placeholder="Enter your password here...",
+            type="password", icon="🔑", key="login_user_pw"
+        )
+        st.caption("User accounts are managed by an administrator.")
 
-        with tabs[1]:
-            st.header("🔐 :orange[Existing User Login]")
-            ip_user_id = st.text_input(
-                "User ID:", placeholder="Enter your user ID here...",
-                icon="👤", key="login_user_id"
-            )
-            ip_user_pw = st.text_input(
-                "Password:", placeholder="Enter your password here...",
-                type="password", icon="🔑", key="login_user_pw"
-            )
+        if st.button("Login", type="primary"):
+            ip_user_id = "_".join(ip_user_id.strip().lower().split(" "))
+            ip_user_pw = ip_user_pw.strip()
 
-            if st.button("Login", type="primary"):
-                ip_user_id = "_".join(ip_user_id.strip().lower().split(" "))
-                ip_user_pw = ip_user_pw.strip()
+            if not ip_user_id or not ip_user_pw:
+                st.error("Please fill all the fields.", icon="🚫")
+            else:
+                # Send to server for login:
+                try:
+                    resp = requests.post(
+                        f"{st.secrets.server.ip_address}/login",
+                        json={"login_id": ip_user_id, "password": ip_user_pw}
+                    )
 
-                if not ip_user_id or not ip_user_pw:
-                    st.error("Please fill all the fields.", icon="🚫")
-                else:
-                    # Send to server for login:
-                    try:
-                        resp = requests.post(
-                            f"{st.secrets.server.ip_address}/login",
-                            json={"login_id": ip_user_id, "password": ip_user_pw}
-                        )
+                    if resp.status_code == 200:
+                        session_id = resp.json().get("user_id")
+                        st.session_state.session_id = session_id
+                        st.session_state.name_of_user = resp.json().get("name", session_id)
+                        st.session_state.role = resp.json().get("role", "user")
 
-                        if resp.status_code == 200:
-                            session_id = resp.json().get("user_id")
-                            st.session_state.session_id = session_id
-                            name_of_user = resp.json().get("name", session_id)
-                            st.session_state.name_of_user = name_of_user
-
-                            st.success("Login successful!", icon="✅")
-                            st.rerun()
-                        else:
-                            st.error(resp.json().get("error", "Login failed."), icon="🚫")
-                            st.stop()
-
-                    except requests.RequestException as e:
-                        st.error(f"Error connecting to server: {e}", icon="🚫")
+                        st.success("Login successful!", icon="✅")
+                        st.rerun()
+                    else:
+                        st.error(resp.json().get("error", "Login failed."), icon="🚫")
                         st.stop()
 
-        with tabs[0]:
-            st.header("🔐 :orange[New User Registration]")
-            ip_user_id = st.text_input(
-                "User ID:", placeholder="Enter your user ID here...",
-                icon="👤", key="register_user_id"
-            )
-            ip_user_name = st.text_input(
-                "Your Name:", placeholder="Enter your name here...",
-                icon="🔤", key="register_user_name"
-            )
-            st.caption("Use characters only from `lower case letters`, `numbers`, `-`, `_`")
-            ip_user_pw = st.text_input(
-                "Password:", placeholder="Enter your password here...",
-                type="password", icon="🔑", key="register_user_pw"
-            )
-
-            if st.button("Register", type="primary"):
-                ip_user_id = "_".join(ip_user_id.strip().lower().split(" "))
-                ip_user_pw = ip_user_pw.strip()
-
-                if not ip_user_name or not ip_user_id or not ip_user_pw:
-                    st.error("Please fill all the fields.", icon="🚫")
-                else:
-                    # Send to server for registration:
-                    try:
-                        resp = requests.post(
-                            f"{st.secrets.server.ip_address}/register",
-                            json={
-                                "name": ip_user_name, "user_id": ip_user_id, "password": ip_user_pw
-                            }
-                        )
-
-                        if resp.status_code == 201:
-                            # st.session_state.session_id = ip_user_id
-                            st.success("Registration successful! You can now login.", icon="✅")
-                            st.stop()
-                        else:
-                            st.error(resp.json().get("error", "Registration failed."), icon="🚫")
-                            st.stop()
-
-                    except requests.RequestException as e:
-                        st.error(f"Error connecting to server: {e}", icon="🚫")
-                        st.stop()
+                except requests.RequestException as e:
+                    st.error(f"Error connecting to server: {e}", icon="🚫")
+                    st.stop()
 
     st.stop()
 
@@ -188,10 +141,10 @@ if "initialized" not in st.session_state:
     #     # Message("human", "Help me in some thing...")
     # ]
 
-    # User's Existing Uploads:
+    # Shared public library (admin-curated):
     st.session_state.user_uploads = requests.get(
         f"{st.session_state.server_ip}/uploads",
-        params={"user_id": st.session_state.session_id}
+        params={"user_id": "public"}
     ).json().get("files", [])
 
     # Last resp retrieved docs:
@@ -203,6 +156,7 @@ if "initialized" not in st.session_state:
 
 # All variables in session state:
 user_id = st.session_state.session_id
+user_role = st.session_state.get("role", "user")
 chat_history = st.session_state.chat_history
 server_ip = st.session_state.server_ip
 # log = st.session_state.logger
@@ -312,7 +266,7 @@ def handle_uploaded_files(uploaded_files) -> bool:
                 st.write("⏳ Finalizing...")
                 st.session_state.user_uploads = requests.get(
                     f"{st.session_state.server_ip}/uploads",
-                    params={"user_id": user_id}
+                    params={"user_id": "public"}
                 ).json().get("files", [])
                 time.sleep(st.secrets.llm.end_delay)
 
@@ -348,9 +302,10 @@ def render_source_doc(doc: dict):
     page = metadata.get('page')  # 0-indexed for PDFs, None for txt/md
 
     # Build URL to open the original file in a new tab
+    # All files are stored under the shared "public" library
     doc_url = (
         f"{server_ip}/file"
-        f"?user_id={urllib.parse.quote(user_id)}"
+        f"?user_id=public"
         f"&file_name={urllib.parse.quote(doc_name)}"
     )
     if page is not None:
@@ -385,7 +340,7 @@ def get_iframe(file_name: str, num_pages: int = 5) -> tuple[bool, str]:
         response = requests.post(
             f"{st.session_state.server_ip}/iframe",
             json={
-                "user_id": user_id,
+                "user_id": "public",  # all files live in the shared public library
                 "file_name": file_name,
                 "num_pages": num_pages
             },
@@ -396,6 +351,36 @@ def get_iframe(file_name: str, num_pages: int = 5) -> tuple[bool, str]:
             return False, response.json().get("error", "Unknown error")
     except requests.RequestException as e:
         # log.error(f"Error getting iframe for {file_name}: {e}")
+        return False, str(e)
+
+
+def add_user_account(name: str, new_user_id: str, password: str) -> tuple[bool, str]:
+    """Create a new regular user account via the admin API."""
+    try:
+        resp = requests.post(
+            f"{server_ip}/admin/add_user",
+            data={"admin_id": user_id, "name": name, "user_id": new_user_id, "password": password}
+        )
+        if resp.status_code == 201:
+            return True, "User created."
+        else:
+            return False, resp.json().get("error", "Unknown error.")
+    except Exception as e:
+        return False, str(e)
+
+
+def delete_user_account(target_user_id: str) -> tuple[bool, str]:
+    """Delete a regular user account via the admin API."""
+    try:
+        resp = requests.post(
+            f"{server_ip}/admin/delete_user",
+            data={"admin_id": user_id, "target_user_id": target_user_id}
+        )
+        if resp.status_code == 200:
+            return True, "User deleted."
+        else:
+            return False, resp.json().get("error", "Unknown error.")
+    except Exception as e:
         return False, str(e)
 
 
@@ -416,76 +401,129 @@ with st.sidebar.container(border=True):
 # Files Panel:
 st.sidebar.subheader("📂 Files")
 
-# File uploader:
-sidebar_uploads = st.sidebar.file_uploader(
-    "Upload Documents",
-    type=['pdf', 'txt', 'md'],
-    accept_multiple_files=True,
-    label_visibility="collapsed",
-)
-if st.sidebar.button("Upload & Embed", type="primary", disabled=not sidebar_uploads):
-    if handle_uploaded_files(sidebar_uploads):
-        st.toast("Files processed successfully!", icon="✅")
-        st.rerun()
-
-st.sidebar.divider()
-
-# File list with per-file delete:
-if not st.session_state.user_uploads:
-    st.sidebar.info("No files uploaded yet.", icon="ℹ️")
-else:
-    for file_name in st.session_state.user_uploads:
-        col1, col2 = st.sidebar.columns([8, 2])
-        col1.caption(file_name)
-        if col2.button("🗑️", key=f"del_{file_name}", help=f"Delete {file_name}"):
-            ok, msg = delete_file_from_server(file_name)
-            if ok:
-                st.session_state.user_uploads = requests.get(
-                    f"{st.session_state.server_ip}/uploads",
-                    params={"user_id": user_id}
-                ).json().get("files", [])
-                st.cache_data.clear()
-                st.toast(f"Deleted '{file_name}'", icon="✅")
-                st.rerun()
-            else:
-                st.sidebar.error(f"Error: {msg}", icon="🚫")
-
-    # Preview section:
-    st.sidebar.divider()
-    selected_file = st.sidebar.selectbox(
-        label="Preview File",
-        index=0,
-        options=st.session_state.user_uploads,
+if user_role == "admin":
+    # Admin: full file management controls
+    sidebar_uploads = st.sidebar.file_uploader(
+        "Upload Documents",
+        type=['pdf', 'txt', 'md'],
+        accept_multiple_files=True,
+        label_visibility="collapsed",
     )
-    if st.sidebar.button("Show Preview"):
-        status, content = get_iframe(selected_file)
-        if status:
-            st.sidebar.markdown(content, unsafe_allow_html=True)
-        else:
-            st.sidebar.error(f"Error: **{content}**", icon="🚫")
+    if st.sidebar.button("Upload & Embed", type="primary", disabled=not sidebar_uploads):
+        if handle_uploaded_files(sidebar_uploads):
+            st.toast("Files processed successfully!", icon="✅")
+            st.rerun()
+
+    st.sidebar.divider()
+
+    if not st.session_state.user_uploads:
+        st.sidebar.info("No files in library yet.", icon="ℹ️")
+    else:
+        for file_name in st.session_state.user_uploads:
+            col1, col2 = st.sidebar.columns([8, 2])
+            col1.caption(file_name)
+            if col2.button("🗑️", key=f"del_{file_name}", help=f"Delete {file_name}"):
+                ok, msg = delete_file_from_server(file_name)
+                if ok:
+                    st.session_state.user_uploads = requests.get(
+                        f"{st.session_state.server_ip}/uploads",
+                        params={"user_id": "public"}
+                    ).json().get("files", [])
+                    st.cache_data.clear()
+                    st.toast(f"Deleted '{file_name}'", icon="✅")
+                    st.rerun()
+                else:
+                    st.sidebar.error(f"Error: {msg}", icon="🚫")
+
+        # Preview section:
+        st.sidebar.divider()
+        selected_file = st.sidebar.selectbox(
+            label="Preview File",
+            index=0,
+            options=st.session_state.user_uploads,
+        )
+        if st.sidebar.button("Show Preview"):
+            status, content = get_iframe(selected_file)
+            if status:
+                st.sidebar.markdown(content, unsafe_allow_html=True)
+            else:
+                st.sidebar.error(f"Error: **{content}**", icon="🚫")
+
+else:
+    # Regular user: read-only view of the shared library
+    if not st.session_state.user_uploads:
+        st.sidebar.info("No documents in library yet.", icon="ℹ️")
+    else:
+        for file_name in st.session_state.user_uploads:
+            st.sidebar.caption(file_name)
+
+        # Preview section:
+        st.sidebar.divider()
+        selected_file = st.sidebar.selectbox(
+            label="Preview File",
+            index=0,
+            options=st.session_state.user_uploads,
+        )
+        if st.sidebar.button("Show Preview"):
+            status, content = get_iframe(selected_file)
+            if status:
+                st.sidebar.markdown(content, unsafe_allow_html=True)
+            else:
+                st.sidebar.error(f"Error: **{content}**", icon="🚫")
 
 st.sidebar.divider()
+
+# User Management Panel (admin only):
+if user_role == "admin":
+    with st.sidebar.expander("👥 Users"):
+        # Add user form:
+        with st.container(border=True):
+            st.caption("Add User")
+            new_name = st.text_input("Name", key="new_user_name", placeholder="Display name")
+            new_uid = st.text_input("User ID", key="new_user_id", placeholder="login_id")
+            new_pw = st.text_input("Password", key="new_user_pw", type="password")
+            if st.button("Create", key="create_user_btn", type="primary"):
+                if not new_name or not new_uid or not new_pw:
+                    st.error("Fill all fields.", icon="🚫")
+                else:
+                    ok, msg = add_user_account(new_name, new_uid, new_pw)
+                    if ok:
+                        st.toast(f"User '{new_uid}' created.", icon="✅")
+                        st.rerun()
+                    else:
+                        st.error(msg, icon="🚫")
+
+        st.divider()
+
+        # List existing regular users:
+        try:
+            users_resp = requests.get(
+                f"{server_ip}/admin/users",
+                params={"admin_id": user_id}
+            )
+            managed_users = users_resp.json().get("users", []) if users_resp.status_code == 200 else []
+        except Exception:
+            managed_users = []
+
+        if not managed_users:
+            st.caption("No regular users yet.")
+        else:
+            for u in managed_users:
+                u_col, btn_col = st.columns([7, 3])
+                u_col.caption(u["name"])
+                if btn_col.button("🗑️", key=f"del_user_{u['user_id']}", help=f"Delete {u['user_id']}"):
+                    ok, msg = delete_user_account(u["user_id"])
+                    if ok:
+                        st.toast(f"Deleted user '{u['user_id']}'", icon="✅")
+                        st.rerun()
+                    else:
+                        st.error(msg, icon="🚫")
+
+    st.sidebar.divider()
 
 # Dummy Mode Toggle:
 st.sidebar.toggle(label="Dummy Response Mode", value=False, key="dummy_mode",
                   help="Toggle to use dummy responses instead of actual LLM responses.")
-
-# Clear My Data:
-if st.sidebar.button("Clear My Uploads", type="secondary", icon="🗑️"):
-    try:
-        resp = requests.post(
-            f"{st.session_state.server_ip}/clear_my_files",
-            data={"user_id": user_id}
-        )
-        if resp.status_code == 200:
-            st.session_state.user_uploads = []
-            st.cache_data.clear()
-            st.toast("All uploads cleared!", icon="✅")
-            st.rerun()
-        else:
-            st.error(resp.json().get("error", "Failed to clear Uploads."), icon="🚫")
-    except requests.RequestException as e:
-        st.error(f"Error clearing Uploads: {e}", icon="🚫")
 
 # Clear my Chat History:
 if st.sidebar.button("Clear My Chat History", type="secondary", icon="💬"):
