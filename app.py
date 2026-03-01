@@ -390,12 +390,12 @@ def delete_user_account(target_user_id: str) -> tuple[bool, str]:
 
 # User Profile:
 with st.sidebar.container(border=True):
-    c1, c2 = st.columns([1, 8])
-    # c1.image("./assets/user.png", use_container_width=True)
+    c1, c2, c3 = st.columns([1, 6, 3])
     c1.write("👤")
-    # c2.write(" ".join([word.capitalize() for word in user_id.split("_")]))
     c2.write(st.session_state.get("name_of_user", "Error Occurred!"))
-# st.sidebar.divider()
+    if c3.button("Logout", type="secondary", use_container_width=True):
+        st.session_state.clear()
+        st.rerun()
 
 
 # Files Panel:
