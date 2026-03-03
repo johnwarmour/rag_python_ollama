@@ -83,11 +83,11 @@ def get_output_parser():
 
 # Resp in increasing order of length:
 dummy_responses = [
-    "1> Hey there! 👋  \nI'm Gemma-3, a language model developed by the Gemma team at Google. I'm here to help you with questions and create interesting text. I’m still improving and learning each day. Let’s explore and have some fun together! 🤖",
+    "1> Hey there! 👋  \nI’m an AI assistant here to help you with questions and create interesting text. I’m here to explore and learn together with you. Let’s have some fun! 🤖",
 
-    "2> Hello 👋!  \nI'm Gemma-3 😎, a large language model created by the Gemma team at Google-Deepmind. I’m here to assist you with a wide range of tasks, from answering your questions to generating creative text formats. My goal is to provide helpful and informative responses. I'm still under development, and I’m learning new things every day! I’m excited to explore with you. Let's see what we can create! 🤖✨",
+    "2> Hello 👋!  \nI’m an AI assistant 😎, here to help you with a wide range of tasks, from answering your questions to generating creative text formats. My goal is to provide helpful and informative responses. I’m excited to explore with you. Let’s see what we can create! 🤖✨",
 
-    "3> Hello 👋!  \nI'm Gemma-3 😎, a powerful language model developed by the talented folks at Google-Deepmind. I'm here to help you out with a wide range of tasks—whether it’s answering complex questions, crafting detailed explanations, writing stories, poems, or even generating code snippets. I strive to be informative, creative, and engaging in every response I give.  \n\nI'm constantly learning, improving, and adapting to serve you better. Even though I'm still a work in progress, I'm pretty good at what I do! 😄  \n\nFeel free to test my capabilities—ask me anything, challenge me, or just chat. Let’s collaborate, learn new things, and build something awesome together. Ready when you are! 🚀🤖✨"
+    "3> Hello 👋!  \nI’m an AI assistant 😎, ready to help you with a wide range of tasks—whether it’s answering complex questions, crafting detailed explanations, writing stories, poems, or even generating code snippets. I strive to be informative, creative, and engaging in every response I give.  \n\nFeel free to test my capabilities—ask me anything, challenge me, or just chat. Let’s collaborate, learn new things, and build something awesome together. Ready when you are! 🚀🤖✨"
 ]
 log.info(f"Loaded {len(dummy_responses)} dummy responses for testing.")
 
