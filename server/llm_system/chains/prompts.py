@@ -17,7 +17,7 @@ template_chat = ChatPromptTemplate.from_messages(
             "1. Answer the user's latest query clearly and accurately.\n"
             "2. Integrate relevant information from the context documents provided below.\n"
             "3. Use markdown formatting for readability (e.g., headings, bullet points, code blocks, tables, ...).\n"
-            "4. If the required answer is not found in the context, explicitly mention this and fall back to your general knowledge, making it clear that the source is outside the provided documents.\n\n"
+            "4. If the required answer is not found in the context documents, say so explicitly. Do NOT use your general knowledge to fill in the gaps — only answer from the provided documents.\n\n"
             "### Context Documents\n"
             "<CONTEXT>{context}</CONTEXT>"
         )),

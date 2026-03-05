@@ -22,7 +22,7 @@ LLM_CHAT_MODEL_NAME: str = "gemma3:12b"              # Chatting model
 # openai    → "gpt-4o"
 # anthropic → "claude-sonnet-4-6"
 # google    → "gemini-2.0-flash"
-LLM_CHAT_TEMPERATURE: float = 0.75
+LLM_CHAT_TEMPERATURE: float = 0.1
 
 LLM_SUMMARY_MODEL_NAME: str = "gemma3:12b"           # History Summarization model
 LLM_SUMMARY_TEMPERATURE: float = 0.5
