@@ -27,7 +27,8 @@ LLM_CHAT_TEMPERATURE: float = 0.1
 LLM_SUMMARY_MODEL_NAME: str = "gemma3:12b"           # History Summarization model
 LLM_SUMMARY_TEMPERATURE: float = 0.5
 
-EMB_MODEL_NAME: str = "mxbai-embed-large:latest"        # Embeddings model
+# EMB_MODEL_NAME: str = "mxbai-embed-large:latest"        # Embeddings model
+EMB_MODEL_NAME: str = "nomic-embed-text:latest"         # Embeddings model
 
 # The max token count which shall be allowed after 'chat_history + input + context'.
 # Note: only applies to Ollama (num_ctx). API providers manage context server-side.
