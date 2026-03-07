@@ -57,6 +57,12 @@ def ingest_file(user_id: str, file_path: str, vectorstore: VectorDB,
         total = len(split_docs)
         for i in range(0, total, EMBED_BATCH_SIZE):
             batch = split_docs[i:i + EMBED_BATCH_SIZE]
+            for j, chunk in enumerate(batch):
+                chunk_len = len(chunk.page_content)
+                page = chunk.metadata.get("page", "?")
+                log.debug(f"  Chunk {i + j + 1}/{total} | page={page} | chars={chunk_len}")
+                if chunk_len > 1200:
+                    log.warning(f"  Large chunk detected: chunk {i + j + 1}/{total} | page={page} | chars={chunk_len}")
             batch_ids = vectorstore.db.add_documents(batch, embeddings=embeddings)
             all_doc_ids.extend(batch_ids)
             log.info(f"Embedded batch {i // EMBED_BATCH_SIZE + 1}/{(total + EMBED_BATCH_SIZE - 1) // EMBED_BATCH_SIZE} ({len(batch)} chunks) from {file_path}.")
