@@ -246,6 +246,7 @@ def embed_file(file_name: str) -> tuple[bool, str]:
 def handle_uploaded_files(uploaded_files) -> bool:
     """Handle the uploaded files by uploading them to the server and embedding their content."""
     try:
+        failed_files = []
         with st.status("Processing files...", expanded=True) as upload_status:
             for i, file in enumerate(uploaded_files):
                 st.write(f"📂 File {i+1} of {len(uploaded_files)}: **{file.name}**")
@@ -253,14 +254,19 @@ def handle_uploaded_files(uploaded_files) -> bool:
                 st.write("⏳ Uploading...")
                 status, message = upload_file(file)
                 if not status:
-                    raise RuntimeError(f"Upload failed for '{file.name}': {message}")
+                    st.warning(f"Upload failed for '{file.name}': {message}", icon="⚠️")
+                    failed_files.append(file.name)
+                    continue
                 server_file_name = message
                 time.sleep(st.secrets.llm.per_step_delay)
 
                 st.write("⏳ Embedding content...")
                 status, message = embed_file(server_file_name)
                 if not status:
-                    raise RuntimeError(f"Embedding failed for '{file.name}': {message}")
+                    st.warning(f"Embedding failed for '{file.name}': {message}", icon="⚠️")
+                    failed_files.append(file.name)
+                    time.sleep(st.secrets.llm.per_step_delay)
+                    continue
                 time.sleep(st.secrets.llm.per_step_delay)
 
                 st.write("⏳ Finalizing...")
@@ -270,7 +276,10 @@ def handle_uploaded_files(uploaded_files) -> bool:
                 ).json().get("files", [])
                 time.sleep(st.secrets.llm.end_delay)
 
-            upload_status.update(label="Files processed successfully!", state="complete", expanded=False)
+            if failed_files:
+                upload_status.update(label=f"Done with {len(failed_files)} failure(s). Check warnings above.", state="error", expanded=True)
+            else:
+                upload_status.update(label="Files processed successfully!", state="complete", expanded=False)
         return True
 
     except Exception as e:

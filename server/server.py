@@ -451,21 +451,29 @@ async def embed_file(embed_request: EmbedRequest, request: Request):
     # Run ingest_file in a thread so it doesn't block the async event loop.
     # Embedding large PDFs can take minutes on CPU and would otherwise freeze uvicorn.
     # Ingest under "public" so vector metadata marks this as the shared library.
-    status, doc_ids, message = await asyncio.to_thread(
-        ingest_file,
-        "public",
-        files.get_file_path(user_id="public", file_name=file_name),
-        request.app.state.vector_db,
-        request.app.state.vector_db.get_embeddings()
-    )
+    try:
+        status, doc_ids, message = await asyncio.to_thread(
+            ingest_file,
+            "public",
+            files.get_file_path(user_id="public", file_name=file_name),
+            request.app.state.vector_db,
+            request.app.state.vector_db.get_embeddings()
+        )
+    except Exception as e:
+        log.error(f"/embed Unexpected error for '{user_id}' and file '{file_name}': {e}")
+        return JSONResponse(content={"error": f"Unexpected error during embedding: {e}"}, status_code=500)
+
+    if status and not doc_ids:
+        log.warning(f"/embed No content extracted from '{file_name}' for '{user_id}'")
+        return JSONResponse(content={"error": f"No embeddable content found in '{file_name}'"}, status_code=500)
 
     if status:
         file_id = sq_db.get_file_id_by_name(user_id="public", file_name=file_name)
         for vid in doc_ids:
             sq_db.add_embedding(file_id=file_id, vector_id=vid)
 
-        log.info(f"/embed Embedding completed for '{user_id}' and file '{file_name}'")
-        return JSONResponse(content={"status": "success"}, status_code=200)
+        log.info(f"/embed Embedding completed for '{user_id}' and file '{file_name}' ({len(doc_ids)} chunks)")
+        return JSONResponse(content={"status": "success", "chunks": len(doc_ids)}, status_code=200)
     else:
         log.error(f"/embed Embedding failed for '{user_id}' and file '{file_name}': {message}")
         return JSONResponse(content={"error": message}, status_code=500)
@@ -735,8 +743,8 @@ async def rag(request: Request, chat_request: RagChatRequest):
             else:
                 # Search kwargs for the configurable retriever:
                 search_kwargs = {
-                    "k": 5,
-                    "search_type": "similarity",
+                    "k": 12,
+                    "search_type": "mmr",
                     "filter": {
                         "$or": [
                             {"user_id": session_id},
