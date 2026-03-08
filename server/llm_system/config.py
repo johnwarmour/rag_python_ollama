@@ -24,8 +24,12 @@ LLM_CHAT_MODEL_NAME: str = "gemma3:12b"              # Chatting model
 # google    → "gemini-2.0-flash"
 LLM_CHAT_TEMPERATURE: float = 0.1
 
-LLM_SUMMARY_MODEL_NAME: str = "gemma3:12b"           # History Summarization model
-LLM_SUMMARY_TEMPERATURE: float = 0.5
+#LLM_SUMMARY_MODEL_NAME and LLM_SUMMARY_TEMPERATURE are not actually being used
+# see server/server.py, app.state.llm_summary = app.state.llm_chat
+#if you were so inclined, though, you could wire things up to use a cheaper model 
+# to summarize the full question to the more robust LLM
+#LLM_SUMMARY_MODEL_NAME: str = "gemma3:12b"           # History Summarization model
+#LLM_SUMMARY_TEMPERATURE: float = 0.5
 
 # EMB_MODEL_NAME: str = "mxbai-embed-large:latest"        # Embeddings model
 EMB_MODEL_NAME: str = "bge-m3:latest"                   # Embeddings model
