@@ -254,8 +254,8 @@ def handle_uploaded_files(uploaded_files) -> bool:
                 st.write("⏳ Uploading...")
                 status, message = upload_file(file)
                 if not status:
-                    st.warning(f"Upload failed for '{file.name}': {message}", icon="⚠️")
-                    failed_files.append(file.name)
+                    st.write(f"❌ Upload failed: {message}")
+                    failed_files.append((file.name, f"Upload failed: {message}"))
                     continue
                 server_file_name = message
                 time.sleep(st.secrets.llm.per_step_delay)
@@ -263,8 +263,8 @@ def handle_uploaded_files(uploaded_files) -> bool:
                 st.write("⏳ Embedding content...")
                 status, message = embed_file(server_file_name)
                 if not status:
-                    st.warning(f"Embedding failed for '{file.name}': {message}", icon="⚠️")
-                    failed_files.append(file.name)
+                    st.write(f"❌ Embedding failed: {message}")
+                    failed_files.append((file.name, f"Embedding failed: {message}"))
                     time.sleep(st.secrets.llm.per_step_delay)
                     continue
                 time.sleep(st.secrets.llm.per_step_delay)
@@ -277,12 +277,16 @@ def handle_uploaded_files(uploaded_files) -> bool:
                 time.sleep(st.secrets.llm.end_delay)
 
             if failed_files:
-                upload_status.update(label=f"Done with {len(failed_files)} failure(s). Check warnings above.", state="error", expanded=True)
+                upload_status.update(label=f"Done — {len(failed_files)} file(s) failed (see above)", state="error", expanded=True)
             else:
                 upload_status.update(label="Files processed successfully!", state="complete", expanded=False)
+
+        # Store failures in session state so they survive the st.rerun() call
+        st.session_state.upload_failures = failed_files
         return True
 
     except Exception as e:
+        st.session_state.upload_failures = [(None, str(e))]
         st.error(f"Error: {e}", icon="🚫")
         return False
 
@@ -420,8 +424,15 @@ if user_role == "admin":
     )
     if st.sidebar.button("Upload & Embed", type="primary", disabled=not sidebar_uploads):
         if handle_uploaded_files(sidebar_uploads):
-            st.toast("Files processed successfully!", icon="✅")
+            if not st.session_state.get("upload_failures"):
+                st.toast("Files processed successfully!", icon="✅")
             st.rerun()
+
+    # Show any failures from the previous upload run (persists across rerun)
+    if st.session_state.get("upload_failures"):
+        for file_name, reason in st.session_state.upload_failures:
+            label = file_name if file_name else "Unknown file"
+            st.sidebar.error(f"**{label}**: {reason}", icon="🚫")
 
     st.sidebar.divider()
 

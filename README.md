@@ -2,10 +2,6 @@
 
 A modular Retrieval-Augmented Generation system with a configurable LLM backend, served locally via Ollama. Upload documents, ask questions, get answers grounded in what you uploaded.
 
-[![HuggingFace Space](https://img.shields.io/badge/bhushan--songire/-rag--with--gemma3-ff8800.svg?logo=huggingface)](https://huggingface.co/spaces/bhushan-songire/rag-with-gemma3)
-
-> The Hugging Face deployment uses Google Gemini-2.0-Flash-Lite instead of a local model, due to hosting constraints.
-
 
 ---
 
@@ -70,8 +66,8 @@ The system runs two servers in one container: FastAPI handles all backend logic,
 
 **Docker**
 
-- Single Dockerfile supports both development (`ENV_TYPE=dev`) and deployment (`ENV_TYPE=deploy`) modes.
-- Dev mode uses Ollama on the host machine. Deploy mode swaps in a Google Gemini API backend.
+- Runs both FastAPI and Streamlit in a single container.
+- Connects to Ollama running on the host machine via `host.docker.internal`.
 
 
 ---
@@ -141,22 +137,12 @@ After starting, follow the [Admin Setup](#admin-setup) steps to create the first
 
 ### Docker
 
-The Dockerfile has two modes controlled by a build argument:
-
-| Mode | `ENV_TYPE` | LLM backend | Ports |
-|------|------------|-------------|-------|
-| Development | `dev` | Ollama on host machine | 8000, 8501 |
-| Deployment | `deploy` | Google Gemini API | 7860 |
-
-#### Development
-
 ```bash
 # Build
-docker build --build-arg ENV_TYPE=dev -t rag-gemma3:dev .
+docker build -t rag-gemma3:dev .
 
 # Create container
 docker create --name rag-gemma3-dev \
-    -e ENV_TYPE=dev \
     -p 8000:8000 -p 8501:8501 \
     rag-gemma3:dev
 
@@ -172,31 +158,11 @@ docker start -a rag-gemma3-dev
 
 Open the UI at [http://localhost:8501](http://localhost:8501).
 
-#### Deployment
-
-```bash
-# Build
-docker build --build-arg ENV_TYPE=deploy -t rag-gemma3:prod .
-
-# Create container
-docker create --name rag-gemma3-prod \
-    -e ENV_TYPE=deploy \
-    -e GOOGLE_API_KEY="your_google_api_key" \
-    -p 7860:7860 \
-    rag-gemma3:prod
-
-# Start
-docker start -a rag-gemma3-prod
-```
-
-Open the UI at [http://localhost:7860](http://localhost:7860).
-
 #### Rebuild shortcut
 
 ```bash
-# Dev
 docker rm -f rag-gemma3-dev && \
-docker build --build-arg ENV_TYPE=dev -t rag-gemma3:dev . && \
+docker build -t rag-gemma3:dev . && \
 docker run -d --name rag-gemma3-dev -p 8000:8000 -p 8501:8501 rag-gemma3:dev
 ```
 

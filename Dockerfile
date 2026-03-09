@@ -13,7 +13,8 @@ COPY .streamlit/ /streamlit/.streamlit/
 COPY server/logger.py /streamlit/logger.py
 
 # Copy the files to replace:
-COPY docker/. /temp_files/
+COPY docker/dev_llm.py /temp_files/dev_llm.py
+COPY docker/dev_database.py /temp_files/dev_database.py
 COPY requirements.txt /temp_files/requirements.txt
 
 # Add entry point script
@@ -25,23 +26,9 @@ RUN useradd -m appuser
 RUN chmod +x /entrypoint.sh && \
     chown -R appuser:appuser /fastAPI /streamlit /temp_files /entrypoint.sh /tmp
 
-# Get the build arguments, with a default values
-ARG ENV_TYPE=deploy
-# Set the environment variable in the container
-ENV ENV_TYPE=${ENV_TYPE}
-
-
-# Check the env and replace the files accordingly
-RUN if [ "$ENV_TYPE" = "deploy" ]; then \
-        # Copy the deployment files
-        cp /temp_files/deploy_llm.py /fastAPI/llm_system/core/llm.py && \
-        cp /temp_files/deploy_database.py /fastAPI/llm_system/core/database.py; \
-    else \
-        # Copy the development files 
-        # (it is not from Docker Engine, it is inside the container to container only)
-        cp /temp_files/dev_llm.py /fastAPI/llm_system/core/llm.py && \
-        cp /temp_files/dev_database.py /fastAPI/llm_system/core/database.py; \
-    fi
+# Replace core files with Docker-aware versions (uses host.docker.internal for Ollama)
+RUN cp /temp_files/dev_llm.py /fastAPI/llm_system/core/llm.py && \
+    cp /temp_files/dev_database.py /fastAPI/llm_system/core/database.py
 
 
 # Switch to non-root user
