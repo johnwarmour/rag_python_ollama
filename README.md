@@ -1,10 +1,10 @@
-# RAG with Gemma-3
+# Local RAG System
 
-A modular Retrieval-Augmented Generation system built on Google DeepMind's Gemma 3, served locally via Ollama. Upload documents, ask questions, get answers grounded in what you uploaded.
+A modular Retrieval-Augmented Generation system with a configurable LLM backend, served locally via Ollama. Upload documents, ask questions, get answers grounded in what you uploaded.
 
 [![HuggingFace Space](https://img.shields.io/badge/bhushan--songire/-rag--with--gemma3-ff8800.svg?logo=huggingface)](https://huggingface.co/spaces/bhushan-songire/rag-with-gemma3)
 
-> The Hugging Face deployment uses Google Gemini-2.0-Flash-Lite instead of Gemma3, due to hosting constraints.
+> The Hugging Face deployment uses Google Gemini-2.0-Flash-Lite instead of a local model, due to hosting constraints.
 
 
 ---
@@ -48,6 +48,7 @@ The system runs two servers in one container: FastAPI handles all backend logic,
 - Admins upload and embed documents into a shared public library. All users query against the same library.
 - Supported formats: PDF, TXT, Markdown.
 - Per-file delete and PDF preview available to admins in the sidebar.
+- Upload failures are handled per-file — a single failed embed does not stop the remaining files from being processed.
 
 **Chat interface**
 
@@ -58,8 +59,8 @@ The system runs two servers in one container: FastAPI handles all backend logic,
 
 **Vector storage and retrieval**
 
-- Documents are split into chunks, embedded with `mxbai-embed-large`, and stored in FAISS.
-- Retrieval uses a configurable similarity search with a per-query metadata filter.
+- Documents are split into chunks, embedded with `bge-m3`, and stored in FAISS.
+- Retrieval uses MMR (Max Marginal Relevance) to surface diverse, relevant chunks across documents.
 - The RAG chain summarizes conversation history into a standalone query before retrieval.
 
 **FastAPI backend**
@@ -82,8 +83,8 @@ The system runs two servers in one container: FastAPI handles all backend logic,
 - Streamlit
 - Docker
 - Ollama
-    - Gemma-3 (chat and summarization)
-    - mxbai-embed-large (embeddings)
+    - Configurable chat LLM (default: `gemma3:12b`)
+    - bge-m3 (embeddings)
 - FAISS
 - SQLite-3
 - bcrypt
@@ -228,7 +229,7 @@ The script prompts for a user ID, display name, and password. Once created, log 
 
 ### Persistent Storage
 
-By default, all data lives inside the container and is lost when the container is removed. To persist it, mount three paths when creating the container:
+By default, all data lives inside the container and is lost when the container is removed. To persist it, mount these paths when creating the container:
 
 ```bash
 docker create --name rag-gemma3-dev \
@@ -237,6 +238,7 @@ docker create --name rag-gemma3-dev \
     -v /your/local/uploads:/fastAPI/user_uploads \
     -v /your/local/faiss:/fastAPI/user_faiss \
     -v /your/local/data.db:/fastAPI/user_data.db \
+    -v /your/local/app.log:/fastAPI/app.log \
     rag-gemma3:dev
 ```
 
@@ -244,7 +246,10 @@ docker create --name rag-gemma3-dev \
 |----------------|----------|
 | `/fastAPI/user_uploads` | Uploaded files |
 | `/fastAPI/user_faiss` | FAISS vector index |
-| `/fastAPI/user_data.db` | SQLite database |
+| `/fastAPI/user_data.db` | SQLite database (users, file records) |
+| `/fastAPI/app.log` | Server logs |
+
+> **Note:** `user_data.db` is also copied into the image at build time if it exists in `server/` on the host. Add it to a `.dockerignore` if you want a clean database on every build.
 
 
 ### Resetting the Project
