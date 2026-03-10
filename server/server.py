@@ -10,6 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import json
 import asyncio
+import threading
+import queue
+import uuid
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 
@@ -33,6 +36,60 @@ from langchain_core.messages import BaseMessage as T_MESSAGE
 
 import logger
 log = logger.get_logger("rag_server")
+
+
+# ------------------------------------------------------------------------------
+# Task queue for non-blocking embed pipeline:
+# ------------------------------------------------------------------------------
+
+embed_tasks: dict[str, dict] = {}       # task_id → {"status": ..., ...}
+embed_task_lock = threading.Lock()
+embed_queue: queue.Queue = queue.Queue()
+
+
+def embed_worker():
+    """Processes embed jobs sequentially in a background thread.
+    Sequential processing avoids FAISS race conditions on concurrent writes.
+    """
+    while True:
+        task = embed_queue.get(block=True)
+        task_id = task["task_id"]
+
+        with embed_task_lock:
+            embed_tasks[task_id]["status"] = "running"
+
+        try:
+            status, doc_ids, message = ingest_file(
+                task["user_id"],
+                task["file_path"],
+                task["vector_db"],
+                task["embeddings"],
+            )
+
+            if status and not doc_ids:
+                with embed_task_lock:
+                    embed_tasks[task_id] = {"status": "failed", "error": f"No embeddable content found in '{task['file_name']}'"}
+
+            elif status:
+                file_id = sq_db.get_file_id_by_name(user_id=task["user_id"], file_name=task["file_name"])
+                for vid in doc_ids:
+                    sq_db.add_embedding(file_id=file_id, vector_id=vid)
+                log.info(f"[embed_worker] Completed '{task['file_name']}' ({len(doc_ids)} chunks)")
+                with embed_task_lock:
+                    embed_tasks[task_id] = {"status": "complete", "chunks": len(doc_ids)}
+
+            else:
+                log.error(f"[embed_worker] Failed '{task['file_name']}': {message}")
+                with embed_task_lock:
+                    embed_tasks[task_id] = {"status": "failed", "error": message}
+
+        except Exception as e:
+            log.error(f"[embed_worker] Unexpected error for '{task['file_name']}': {e}")
+            with embed_task_lock:
+                embed_tasks[task_id] = {"status": "failed", "error": str(e)}
+
+        finally:
+            embed_queue.task_done()
 
 
 # ------------------------------------------------------------------------------
@@ -91,6 +148,10 @@ async def lifespan(app: FastAPI):
     )
 
     log.info("[LifeSpan] All LLM components initialized.")
+
+    worker = threading.Thread(target=embed_worker, daemon=True)
+    worker.start()
+    log.info("[LifeSpan] Embed background worker started.")
 
     # sq_db.delete_database()
     sq_db.create_tables()
@@ -436,47 +497,50 @@ class EmbedRequest(BaseModel):
 
 @app.post("/embed")
 async def embed_file(embed_request: EmbedRequest, request: Request):
-    """Endpoint to embed the uploaded file.
+    """Endpoint to queue an embed job. Returns task_id immediately (202 Accepted).
     - Post request expects JSON `{"user_id": "", "file_name": ""}` structure.
-    - Return JSON with `{"status": "success"}` or `{"error": "message"}` structure.
+    - Return JSON with `{"task_id": "..."}` structure.
     """
     user_id = embed_request.user_id.strip()
     file_name = embed_request.file_name.strip()
 
-    log.info(f"/embed Requested by '{user_id}' for file '{file_name}'")
+    log.info(f"/embed Queued by '{user_id}' for file '{file_name}'")
 
     if not is_admin(user_id):
         return JSONResponse(content={"error": "Forbidden: admin only"}, status_code=403)
 
-    # Run ingest_file in a thread so it doesn't block the async event loop.
-    # Embedding large PDFs can take minutes on CPU and would otherwise freeze uvicorn.
-    # Ingest under "public" so vector metadata marks this as the shared library.
-    try:
-        status, doc_ids, message = await asyncio.to_thread(
-            ingest_file,
-            "public",
-            files.get_file_path(user_id="public", file_name=file_name),
-            request.app.state.vector_db,
-            request.app.state.vector_db.get_embeddings()
-        )
-    except Exception as e:
-        log.error(f"/embed Unexpected error for '{user_id}' and file '{file_name}': {e}")
-        return JSONResponse(content={"error": f"Unexpected error during embedding: {e}"}, status_code=500)
+    task_id = str(uuid.uuid4())
+    with embed_task_lock:
+        embed_tasks[task_id] = {"status": "queued"}
 
-    if status and not doc_ids:
-        log.warning(f"/embed No content extracted from '{file_name}' for '{user_id}'")
-        return JSONResponse(content={"error": f"No embeddable content found in '{file_name}'"}, status_code=500)
+    embed_queue.put({
+        "task_id": task_id,
+        "user_id": "public",
+        "file_name": file_name,
+        "file_path": files.get_file_path(user_id="public", file_name=file_name),
+        "vector_db": request.app.state.vector_db,
+        "embeddings": request.app.state.vector_db.get_embeddings(),
+    })
 
-    if status:
-        file_id = sq_db.get_file_id_by_name(user_id="public", file_name=file_name)
-        for vid in doc_ids:
-            sq_db.add_embedding(file_id=file_id, vector_id=vid)
+    return JSONResponse(content={"task_id": task_id}, status_code=202)
 
-        log.info(f"/embed Embedding completed for '{user_id}' and file '{file_name}' ({len(doc_ids)} chunks)")
-        return JSONResponse(content={"status": "success", "chunks": len(doc_ids)}, status_code=200)
-    else:
-        log.error(f"/embed Embedding failed for '{user_id}' and file '{file_name}': {message}")
-        return JSONResponse(content={"error": message}, status_code=500)
+
+@app.get("/embed/status/{task_id}")
+async def embed_status(task_id: str, user_id: str = Query(...)):
+    """Check status of an embed task.
+    - Get request expects `user_id` as query parameter and `task_id` as path parameter.
+    - Return JSON with task status dict or `{"error": "..."}` structure.
+    """
+    if not is_admin(user_id):
+        return JSONResponse(content={"error": "Forbidden: admin only"}, status_code=403)
+
+    with embed_task_lock:
+        task = embed_tasks.get(task_id)
+
+    if not task:
+        return JSONResponse(content={"error": "Task not found"}, status_code=404)
+
+    return JSONResponse(content=task, status_code=200)
 
 
 # ------------------------------------------------------------------------------

@@ -211,77 +211,111 @@ def upload_file(uploaded_file) -> tuple[bool, str]:
         return False, str(e)
 
 
-def embed_file(file_name: str) -> tuple[bool, str]:
-    """Embed the content of the file into the RAG system.
-    Args:
-        file_name: The name of the file to embed.
-    Returns:
-        tuple: A tuple containing:
-            - bool: True if the file was embedded successfully, False otherwise.
-            - str: Success message or error message.
-    """
+def start_embed(file_name: str) -> tuple[bool, str]:
+    """Queue an embed job on the server. Returns (success, task_id_or_error)."""
     try:
         response = requests.post(
             f"{server_ip}/embed",
-            json={
-                "user_id": user_id,
-                "file_name": file_name
-            },
-            timeout=300
+            json={"user_id": user_id, "file_name": file_name},
+            timeout=30,
         )
-
-        if response.status_code == 200:
-            # log.info(f"File `{file_name}` embedded successfully for user `{user_id}`.")
-            return True, response.json().get("message", "File embedded successfully.")
+        if response.status_code == 202:
+            return True, response.json()["task_id"]
         else:
-            error_message = response.json().get("error", "Unknown error")
-            # log.error(f"Failed to embed file `{file_name}`: {error_message} for user `{user_id}`.")
-            return False, error_message
-
+            return False, response.json().get("error", "Unknown error")
     except Exception as e:
-        # log.error(f"Error embedding file `{file_name}`: {e} for user `{user_id}`.")
         return False, str(e)
+
+
+def poll_embed_task(task_id: str) -> dict:
+    """Check status of one embed task. Returns the task dict or an error dict."""
+    try:
+        response = requests.get(
+            f"{server_ip}/embed/status/{task_id}",
+            params={"user_id": user_id},
+            timeout=10,
+        )
+        if response.status_code == 200:
+            return response.json()
+        return {"status": "failed", "error": response.json().get("error", "Unknown")}
+    except Exception as e:
+        return {"status": "failed", "error": str(e)}
 
 
 def handle_uploaded_files(uploaded_files) -> bool:
     """Handle the uploaded files by uploading them to the server and embedding their content."""
     try:
         failed_files = []
-        with st.status("Processing files...", expanded=True) as upload_status:
+
+        # --- Phase 1: Upload all files (fast) ---
+        with st.status("Uploading files...", expanded=True) as status_box:
+            uploaded = []   # [(original_name, server_file_name)]
             for i, file in enumerate(uploaded_files):
-                st.write(f"📂 File {i+1} of {len(uploaded_files)}: **{file.name}**")
+                st.write(f"📂 {i+1}/{len(uploaded_files)}: **{file.name}**")
+                ok, result = upload_file(file)
+                if ok:
+                    uploaded.append((file.name, result))
+                    st.write("✅ Uploaded")
+                else:
+                    st.write(f"❌ {result}")
+                    failed_files.append((file.name, f"Upload failed: {result}"))
+            status_box.update(label=f"Uploaded {len(uploaded)}/{len(uploaded_files)} files", state="complete", expanded=False)
 
-                st.write("⏳ Uploading...")
-                status, message = upload_file(file)
-                if not status:
-                    st.write(f"❌ Upload failed: {message}")
-                    failed_files.append((file.name, f"Upload failed: {message}"))
-                    continue
-                server_file_name = message
-                time.sleep(st.secrets.llm.per_step_delay)
-
-                st.write("⏳ Embedding content...")
-                status, message = embed_file(server_file_name)
-                if not status:
-                    st.write(f"❌ Embedding failed: {message}")
-                    failed_files.append((file.name, f"Embedding failed: {message}"))
-                    time.sleep(st.secrets.llm.per_step_delay)
-                    continue
-                time.sleep(st.secrets.llm.per_step_delay)
-
-                st.write("⏳ Finalizing...")
-                st.session_state.user_uploads = requests.get(
-                    f"{st.session_state.server_ip}/uploads",
-                    params={"user_id": "public"}
-                ).json().get("files", [])
-                time.sleep(st.secrets.llm.end_delay)
-
-            if failed_files:
-                upload_status.update(label=f"Done — {len(failed_files)} file(s) failed (see above)", state="error", expanded=True)
+        # --- Phase 2: Queue all embed jobs (fast — server returns task_id immediately) ---
+        tasks = []   # [(original_name, task_id)]
+        for orig_name, server_name in uploaded:
+            ok, result = start_embed(server_name)
+            if ok:
+                tasks.append((orig_name, result))
             else:
-                upload_status.update(label="Files processed successfully!", state="complete", expanded=False)
+                failed_files.append((orig_name, f"Failed to queue embed: {result}"))
 
-        # Store failures in session state so they survive the st.rerun() call
+        # --- Phase 3: Poll all tasks with live progress display ---
+        if tasks:
+            progress_placeholder = st.empty()
+            task_states = {task_id: {"name": name, "status": "queued"} for name, task_id in tasks}
+
+            while True:
+                all_done = True
+                for task_id, state in task_states.items():
+                    if state["status"] in ("queued", "running"):
+                        result = poll_embed_task(task_id)
+                        task_states[task_id]["status"] = result.get("status", "failed")
+                        if result.get("chunks"):
+                            task_states[task_id]["chunks"] = result["chunks"]
+                        if result.get("error"):
+                            task_states[task_id]["error"] = result["error"]
+                    if task_states[task_id]["status"] in ("queued", "running"):
+                        all_done = False
+
+                # Build live status display
+                lines = []
+                for state in task_states.values():
+                    s = state["status"]
+                    name = state["name"]
+                    if s == "complete":
+                        lines.append(f"✅ **{name}** — {state.get('chunks', '?')} chunks")
+                    elif s == "failed":
+                        lines.append(f"❌ **{name}** — {state.get('error', 'Failed')}")
+                        if (name, state.get("error", "Embedding failed")) not in [(f, e) for f, e in failed_files]:
+                            failed_files.append((name, state.get("error", "Embedding failed")))
+                    elif s == "running":
+                        lines.append(f"⏳ **{name}** — embedding...")
+                    else:
+                        lines.append(f"🔵 **{name}** — queued")
+
+                progress_placeholder.markdown("\n\n".join(lines))
+
+                if all_done:
+                    break
+                time.sleep(3)
+
+        # Refresh file list
+        st.session_state.user_uploads = requests.get(
+            f"{st.session_state.server_ip}/uploads",
+            params={"user_id": "public"}
+        ).json().get("files", [])
+
         st.session_state.upload_failures = failed_files
         return True
 
