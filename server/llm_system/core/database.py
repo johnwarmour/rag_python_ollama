@@ -103,9 +103,7 @@ class VectorDB:
         # Hence, using configurable retriever:
         # https://github.com/langchain-ai/langchain/issues/9195#issuecomment-2095196865
         # retriever = self.db.as_retriever()
-        # Changed to MMR (Max Marginal Relevance) to retrieve more diverse chunks,
-        # since documents in this system tend to contain similar information across sections.
-        retriever = self.db.as_retriever(search_type="mmr")
+        retriever = self.db.as_retriever(search_type="similarity")
         configurable_retriever = retriever.configurable_fields(
             search_kwargs=ConfigurableField(
                 id="search_kwargs",
