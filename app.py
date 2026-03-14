@@ -604,7 +604,7 @@ if st.sidebar.button("Clear My Chat History", type="secondary", icon="💬"):
 
 a, b = st.columns([0.65, 9.35], vertical_alignment='bottom', gap='small')
 a.image("./assets/model_icon.jpg", use_container_width=True)
-b.header(":green[RAG] :blue[Assistant]", divider='rainbow')
+b.header(st.secrets.app.site_name, divider='rainbow')
 
 
 for ind, message in enumerate(st.session_state.chat_history):
