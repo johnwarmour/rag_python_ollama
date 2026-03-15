@@ -56,7 +56,7 @@ The system runs two servers in one container: FastAPI handles all backend logic,
 **Vector storage and retrieval**
 
 - Documents are split into chunks, embedded with `bge-m3`, and stored in FAISS.
-- Retrieval uses MMR (Max Marginal Relevance) to surface diverse, relevant chunks across documents.
+- Retrieval uses similarity search to surface the most relevant chunks across documents. MMR (Max Marginal Relevance) was tried, but for the testing use case lack of nuance in responses was an issue. MMR may well be a better strategy for a different document set and/or different response requirements.
 - The RAG chain summarizes conversation history into a standalone query before retrieval.
 
 **FastAPI backend**
@@ -95,7 +95,7 @@ The system runs two servers in one container: FastAPI handles all backend logic,
 
 1. Clone the repository:
     ```bash
-    git clone --depth 1 https://github.com/Bbs1412/rag-with-gemma3.git
+    git clone --depth 1 https://github.com/johnwarmour/rag_python_ollama.git
     cd rag-with-gemma3
     ```
 
@@ -215,7 +215,7 @@ docker create --name rag-gemma3-dev \
 | `/fastAPI/user_data.db` | SQLite database (users, file records) |
 | `/fastAPI/app.log` | Server logs |
 
-> **Note:** `user_data.db` is also copied into the image at build time if it exists in `server/` on the host. Add it to a `.dockerignore` if you want a clean database on every build.
+> **Note:** `user_data.db` is also copied into the image at build time if it exists in `server/` on the host, allowing you to persist your users on rebuilds. Add it to a `.dockerignore` if you want a clean database on every build.
 
 
 ### Resetting the Project
@@ -265,10 +265,6 @@ python -m llm_system.utils.loader
 
 ---
 
-## Contributions
-
-Contributions and suggestions are welcome.
-
 
 ## License
 
@@ -279,4 +275,4 @@ Licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE) for d
 
 ## Contact
 
-[bhushanbsongire@gmail.com](mailto:bhushanbsongire@gmail.com)
+[johnwarmour@gmail.com](mailto:johnwarmour@gmail.com)
