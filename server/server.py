@@ -193,9 +193,7 @@ app.add_middleware(
 async def root():
     """Root endpoint to check if the server is running."""
     return {
-        "message": "LLM RAG Server is running!",
-        "further": "Proceed to code ur application :)",
-        "thought": "You really are not supposed to be reading this waste of time, but if you are, then you are a curious person. I like that! 😄",
+        "message": "Server is running",
     }
 
 
