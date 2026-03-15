@@ -14,7 +14,7 @@ from typing import Optional, List, Literal
 
 st.set_page_config(
     page_title=st.secrets.app.site_name,
-    page_icon="✨",
+    page_icon="📚",
     layout='wide',
     initial_sidebar_state='expanded',
 )

@@ -265,6 +265,9 @@ python -m llm_system.utils.loader
 
 ---
 
+## Credits
+The starting codebase was from https://github.com/Bbs1412/rag-with-gemma3
+
 
 ## License
 
