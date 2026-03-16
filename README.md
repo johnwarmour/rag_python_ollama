@@ -13,6 +13,7 @@ A modular Retrieval-Augmented Generation system with a configurable LLM backend,
 - [Installation](#installation)
     - [Virtual Environment](#virtual-environment)
     - [Docker](#docker)
+- [Running Tests](#running-tests)
 - [Admin Setup](#admin-setup)
 - [Extra Notes](#extra-notes)
     - [Persistent Storage](#persistent-storage)
@@ -164,6 +165,27 @@ Open the UI at [http://localhost:8501](http://localhost:8501).
 docker rm -f rag-gemma3-dev && \
 docker build -t rag-gemma3:dev . && \
 docker run -d --name rag-gemma3-dev -p 8000:8000 -p 8501:8501 rag-gemma3:dev
+```
+
+
+---
+
+## Running Tests
+
+Tests cover the database layer (`sq_db.py`), file operations (`files.py`), and FastAPI endpoints (`server.py`). No Ollama connection is required — LLM components are mocked.
+
+Requires the virtual environment from [Installation](#virtual-environment). Then install test dependencies and run:
+
+```bash
+pip install -r requirements-test.txt
+pytest
+```
+
+Run a specific module or with verbose output:
+
+```bash
+pytest tests/test_sq_db.py -v
+pytest tests/test_server.py -v
 ```
 
 

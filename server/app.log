@@ -1,0 +1,6 @@
+28-02-26 21:05:01.062 [INFO    ] [sq_db] Logger initialized. [File: 'app.log', Console: 'No']
+28-02-26 21:05:03.369 [INFO    ] [sq_db] Database tables created successfully.
+28-02-26 21:05:16.835 [INFO    ] [sq_db] User 'j' added with ID 'jwa'
+28-02-26 21:14:25.442 [INFO    ] [sq_db] Logger initialized. [File: 'app.log', Console: 'No']
+28-02-26 21:14:26.013 [INFO    ] [sq_db] Database tables created successfully.
+28-02-26 21:14:35.776 [ERROR   ] [sq_db] SQLite error while adding user 'j' with ID 'jwa': UNIQUE constraint failed: users.user_id
