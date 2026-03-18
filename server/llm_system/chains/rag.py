@@ -4,6 +4,7 @@ from langchain_core.runnables import RunnableWithMessageHistory
 
 from .prompts import template_chat as chat_prompt
 from .prompts import template_summarize as summary_prompt
+from llm_system.core.retriever import MultiQueryRetriever
 
 from typing import Callable
 from langchain_core.vectorstores import VectorStoreRetriever
@@ -31,9 +32,14 @@ def build_rag_chain(
 
     log.info("Building the Conversational RAG Chain...")
 
+    # Wrap the base retriever with multi-query expansion.
+    # For each question, 2 rephrasings + the original are searched independently,
+    # then results are deduplicated — improving coverage without changing the rest of the chain.
+    multi_retriever = MultiQueryRetriever(retriever=retriever, llm=llm_summary, n_queries=2)
+
     # Chain to summarize the history and retrieve relevant documents
     # 3 User Input + Chat History > Summarizer Template > Standalone Que > Get Docs
-    retriever_chain = create_history_aware_retriever(llm_summary, retriever, summary_prompt)
+    retriever_chain = create_history_aware_retriever(llm_summary, multi_retriever, summary_prompt)
     log.info("Created the retriever chain with summarization.")
 
     # Chain to combine the retrieved documents and get the final answer
