@@ -20,6 +20,7 @@ A modular Retrieval-Augmented Generation system with a configurable LLM backend,
     - [Resetting the Project](#resetting-the-project)
     - [Ollama on Linux Host](#ollama-on-linux-host)
     - [Changing Models](#changing-models)
+    - [Rate Limiting](#rate-limiting)
 
 
 ---
@@ -59,6 +60,12 @@ The system runs two servers in one container: FastAPI handles all backend logic,
 - Documents are split into chunks, embedded with `bge-m3`, and stored in FAISS.
 - Retrieval uses similarity search to surface the most relevant chunks across documents. MMR (Max Marginal Relevance) was tried, but for the testing use case lack of nuance in responses was an issue. MMR may well be a better strategy for a different document set and/or different response requirements.
 - The RAG chain summarizes conversation history into a standalone query before retrieval.
+
+**Security**
+
+- Prompt injection detection — queries are checked against common injection patterns before reaching the LLM. Suspicious queries are rejected with a 400 response.
+- The system prompt explicitly instructs the model to treat user input as a question only, never as instructions that override its behavior.
+- Rate limiting is built in but disabled by default (appropriate for local/trusted deployments). It can be enabled for external API use — see [Rate Limiting](#rate-limiting).
 
 **FastAPI backend**
 
@@ -283,6 +290,20 @@ To test sub-modules in isolation:
 cd server
 python -m llm_system.utils.loader
 ```
+
+
+### Rate Limiting
+
+Rate limiting is disabled by default, which is appropriate when running locally with a trusted user base and a local LLM (no per-token cost). When switching to an external API such as OpenAI or Anthropic, enable it to control costs.
+
+In [`server/llm_system/config.py`](./server/llm_system/config.py):
+
+```python
+RATE_LIMIT_ENABLED: bool = True          # Enable rate limiting
+RATE_LIMIT_REQUESTS_PER_MINUTE: int = 10 # Max requests per user per minute
+```
+
+Limits are enforced per `user_id` on the `/rag` endpoint using a sliding one-minute window. Requests over the limit receive a `429 Too Many Requests` response. No external dependencies are required.
 
 
 ---

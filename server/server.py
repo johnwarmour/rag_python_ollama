@@ -25,6 +25,7 @@ from llm_system.core.history import HistoryStore            # Class
 from llm_system.chains.rag import build_rag_chain           # Function
 from llm_system import config                               # Constants
 from llm_system.core.ingestion import ingest_file           # Function
+from llm_system.core.sanitizer import is_safe_query         # Function
 
 # Helper Modules:
 import sq_db
@@ -45,6 +46,32 @@ log = logger.get_logger("rag_server")
 embed_tasks: dict[str, dict] = {}       # task_id → {"status": ..., ...}
 embed_task_lock = threading.Lock()
 embed_queue: queue.Queue = queue.Queue()
+
+# ------------------------------------------------------------------------------
+# Rate limiter (per user_id, sliding window):
+# ------------------------------------------------------------------------------
+
+import time
+from collections import defaultdict
+
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+_rate_limit_lock = threading.Lock()
+
+
+def check_rate_limit(user_id: str) -> tuple[bool, str]:
+    """Returns (allowed, error_message). No-op when RATE_LIMIT_ENABLED is False."""
+    if not config.RATE_LIMIT_ENABLED:
+        return True, ""
+
+    now = time.time()
+    window = 60.0
+
+    with _rate_limit_lock:
+        _rate_limit_store[user_id] = [t for t in _rate_limit_store[user_id] if now - t < window]
+        if len(_rate_limit_store[user_id]) >= config.RATE_LIMIT_REQUESTS_PER_MINUTE:
+            return False, f"Rate limit exceeded. Max {config.RATE_LIMIT_REQUESTS_PER_MINUTE} requests per minute."
+        _rate_limit_store[user_id].append(now)
+        return True, ""
 
 
 def embed_worker():
@@ -774,6 +801,18 @@ async def rag(request: Request, chat_request: RagChatRequest):
     """
     rag_chain = request.app.state.rag_chain
     session_id = chat_request.session_id.strip() or "unknown_session"
+
+    # Rate limit check:
+    allowed, rate_msg = check_rate_limit(session_id)
+    if not allowed:
+        log.warning(f"/rag Rate limit hit for '{session_id}'")
+        return JSONResponse(content={"error": rate_msg}, status_code=429)
+
+    # Sanitize query for prompt injection:
+    safe, sanitize_msg = is_safe_query(chat_request.query)
+    if not safe:
+        log.warning(f"/rag Injection attempt blocked for '{session_id}'")
+        return JSONResponse(content={"error": sanitize_msg}, status_code=400)
 
     async def token_streamer():
         try:
