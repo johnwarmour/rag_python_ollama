@@ -57,7 +57,8 @@ class VectorDB:
         # Solution: Load the LLM on GPU and the Embedding model on CPU 100%.
         self.embeddings = OllamaEmbeddings(
             base_url="http://host.docker.internal:11434",  # Use host's IP for Docker
-            model=embed_model, num_gpu=0, keep_alive=-1
+            model=embed_model, num_gpu=0, keep_alive=-1,
+            client_kwargs={"timeout": 120.0}
         )
 
         if verify_connection:

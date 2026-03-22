@@ -55,7 +55,7 @@ class VectorDB:
         # Here, I have configured the model to be loaded on CPU completely.
         # Reason: Ollama keeps alternately loading and unloading the LLM/Emb model on GPU.
         # Solution: Load the LLM on GPU and the Embedding model on CPU 100%.
-        self.embeddings = OllamaEmbeddings(model=embed_model, num_gpu=0, keep_alive=-1)
+        self.embeddings = OllamaEmbeddings(model=embed_model, num_gpu=0, keep_alive=-1, client_kwargs={"timeout": 120.0})
 
         if verify_connection:
             try:

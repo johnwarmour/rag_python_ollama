@@ -60,7 +60,7 @@ class MultiQueryRetriever(Runnable):
         queries = self._parse(result.content)
         queries.append(input)
 
-        log.info(f"[MultiQueryRetriever] Searching {len(queries)} query variations.")
+        log.info(f"[MultiQueryRetriever] Generated queries:\n" + "\n".join(f"  {i+1}. {q}" for i, q in enumerate(queries)))
         all_docs: List[Document] = []
         for query in queries:
             all_docs.extend(self.retriever.invoke(query, config=config))
@@ -74,7 +74,7 @@ class MultiQueryRetriever(Runnable):
         queries = self._parse(result.content)
         queries.append(input)
 
-        log.info(f"[MultiQueryRetriever] Searching {len(queries)} query variations (async).")
+        log.info(f"[MultiQueryRetriever] Generated queries (async):\n" + "\n".join(f"  {i+1}. {q}" for i, q in enumerate(queries)))
         results = await asyncio.gather(*[
             self.retriever.ainvoke(q, config=config) for q in queries
         ])
