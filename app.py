@@ -99,6 +99,11 @@ if "session_id" not in st.session_state:
 
 
 if "initialized" not in st.session_state:
+    # Initialize Logger:
+    # st.session_state.logger = logger.get_logger(name="Streamlit")
+    # log = st.session_state.logger
+    # log.info("Streamlit initialized.")
+
     # Initialize the session with server::
     st.session_state.server_ip = st.secrets.server.ip_address
     try:
@@ -115,6 +120,7 @@ if "initialized" not in st.session_state:
             for msg in chat_hist:
                 st.session_state.chat_history.append(Message(msg['role'], msg['content']))
         else:
+            # log.error(f"Failed to initialize chat history: {resp.json().get('error', 'Unknown error')}")
             st.error(
                 "Failed to initialize chat history. Please try again later.",
                 icon="🚫"
@@ -122,11 +128,18 @@ if "initialized" not in st.session_state:
             st.stop()
 
     except requests.RequestException as e:
+        # log.error(f"Error initializing server session: {e}")
         st.error(
             "Failed to connect to the server. Please check your connection or server status.",
             icon="🚫"
         )
         st.stop()
+
+    # # Initialize messages:
+    # st.session_state.chat_history = [
+    #     Message('assistant', "👋, How may I help you today?"),
+    #     # Message("human", "Help me in some thing...")
+    # ]
 
     # Shared public library (admin-curated):
     st.session_state.user_uploads = requests.get(
@@ -149,6 +162,7 @@ user_id = st.session_state.session_id
 user_role = st.session_state.get("role", "user")
 chat_history = st.session_state.chat_history
 server_ip = st.session_state.server_ip
+# log = st.session_state.logger
 
 
 # ------------------------------------------------------------------------------
@@ -187,12 +201,16 @@ def upload_file(uploaded_file) -> tuple[bool, str]:
 
         if response.status_code == 200:
             message = response.json().get("message", "")
+            # log.info(f"File `{message}` uploaded successfully for user `{user_id}`.")
             return True, message
         else:
             message = response.json().get("error", "Unknown error")
+            # log.error(
+            # f"Failed to upload file `{uploaded_file.name}`: {message} for user `{user_id}`.")
             return False, message
 
     except Exception as e:
+        # log.error(f"Error uploading file `{uploaded_file.name}`: {e} for user `{user_id}`.")
         return False, str(e)
 
 
@@ -382,23 +400,8 @@ def get_iframe(file_name: str, num_pages: int = 5) -> tuple[bool, str]:
         else:
             return False, response.json().get("error", "Unknown error")
     except requests.RequestException as e:
+        # log.error(f"Error getting iframe for {file_name}: {e}")
         return False, str(e)
-
-
-def render_sidebar_preview():
-    """Render the file preview selectbox and iframe in the sidebar."""
-    st.sidebar.divider()
-    selected_file = st.sidebar.selectbox(
-        label="Preview File",
-        index=0,
-        options=st.session_state.user_uploads,
-    )
-    if st.sidebar.button("Show Preview"):
-        status, content = get_iframe(selected_file)
-        if status:
-            st.sidebar.markdown(content, unsafe_allow_html=True)
-        else:
-            st.sidebar.error(f"Error: **{content}**", icon="🚫")
 
 
 def add_user_account(name: str, new_user_id: str, password: str) -> tuple[bool, str]:
@@ -491,7 +494,19 @@ if user_role == "admin":
                 else:
                     st.sidebar.error(f"Error: {msg}", icon="🚫")
 
-        render_sidebar_preview()
+        # Preview section:
+        st.sidebar.divider()
+        selected_file = st.sidebar.selectbox(
+            label="Preview File",
+            index=0,
+            options=st.session_state.user_uploads,
+        )
+        if st.sidebar.button("Show Preview"):
+            status, content = get_iframe(selected_file)
+            if status:
+                st.sidebar.markdown(content, unsafe_allow_html=True)
+            else:
+                st.sidebar.error(f"Error: **{content}**", icon="🚫")
 
 else:
     # Regular user: read-only view of the shared library
@@ -501,7 +516,19 @@ else:
         for file_name in st.session_state.user_uploads:
             st.sidebar.caption(file_name)
 
-        render_sidebar_preview()
+        # Preview section:
+        st.sidebar.divider()
+        selected_file = st.sidebar.selectbox(
+            label="Preview File",
+            index=0,
+            options=st.session_state.user_uploads,
+        )
+        if st.sidebar.button("Show Preview"):
+            status, content = get_iframe(selected_file)
+            if status:
+                st.sidebar.markdown(content, unsafe_allow_html=True)
+            else:
+                st.sidebar.error(f"Error: **{content}**", icon="🚫")
 
 st.sidebar.divider()
 
@@ -611,8 +638,27 @@ for ind, message in enumerate(st.session_state.chat_history):
 
             with st.chat_message(name='assistant', avatar='assistant'):
                 with st.container(border=True):
+                    # # Thinking:
+                    # if thoughts:
+                    #     cont_thoughts = st.expander("💭 Thoughts", expanded=True).markdown(thoughts)
+                    # # Answer:
+                    # st.markdown(answer)
+                    # # Documents:
+                    # if documents:
+                    #     tabs = st.expander("🗃️ Sources", expanded=False).tabs(
+                    #         tabs=[f"Document {i+1}" for i in range(len(documents))]
+                    #     )
+                    #     for i, doc in enumerate(documents):
+                    #         with tabs[i]:
+                    #             st.subheader(":blue[Content:]")
+                    #             st.markdown(doc['page_content'])
+                    #             st.divider()
+                    #             st.subheader(":blue[Source Details:]")
+                    #             st.json(doc['metadata'], expanded=False)
+
                     # Thinking:
                     if thoughts:
+                        # cont_thoughts = c1.expander("💭 Thoughts", expanded=True).markdown(thoughts)
                         cont_thoughts = st.popover(
                             "💭 Thoughts", use_container_width=False).markdown(thoughts)
                     # Answer:
@@ -676,6 +722,13 @@ if user_message := st.chat_input(
 
                         if decoded["type"] == "content":
                             full += decoded["data"]
+                        # elif decoded["type"] == "metadata":
+                        #     full += f"```json\n{json.dumps(decoded['data'], indent=2)}\n```\n\n\n"
+                        # elif decoded["type"] == "context":
+                        #     documents.append(decoded['data'])
+                        # else:
+                        #     st.error(decoded['data'])
+                        #     continue
 
                         resp_holder.markdown(full + "█")
 
@@ -701,7 +754,9 @@ if user_message := st.chat_input(
                         decoded = json.loads(decoded)
 
                         if decoded["type"] == "metadata":
+                            # Skip metadata for now
                             continue
+                            # full += f"```json\n{json.dumps(decoded['data'], indent=2)}\n```\n\n\n"
 
                         elif decoded["type"] == "context":
                             documents.append(decoded['data'])
