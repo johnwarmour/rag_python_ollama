@@ -844,7 +844,7 @@ async def rag(request: Request, chat_request: RagChatRequest):
             else:
                 # Search kwargs for the configurable retriever:
                 search_kwargs = {
-                    "k": 10,
+                    "k": 15,
                     "search_type": "similarity",
                     "filter": {
                         "$or": [

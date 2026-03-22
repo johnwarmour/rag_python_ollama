@@ -156,62 +156,6 @@ server_ip = st.session_state.server_ip
 # ------------------------------------------------------------------------------
 
 
-@st.fragment(run_every=3)
-def render_embed_progress():
-    """Poll embed task status and display progress. Runs as an independent fragment
-    every 3 seconds so it never blocks or interrupts the main chat script."""
-    if not st.session_state.get("embed_poll_state"):
-        return
-
-    poll = st.session_state.embed_poll_state
-    task_states = poll["tasks"]
-    failed_files = poll["failed_files"]
-    timed_out = time.time() - poll["start_time"] > 600
-
-    all_done = True
-    for tid, state in task_states.items():
-        if state["status"] in ("queued", "running"):
-            if timed_out:
-                task_states[tid]["status"] = "failed"
-                task_states[tid]["error"] = "Timed out"
-            else:
-                r = poll_embed_task(tid)
-                task_states[tid]["status"] = r.get("status", "failed")
-                if r.get("chunks"):
-                    task_states[tid]["chunks"] = r["chunks"]
-                if r.get("error"):
-                    task_states[tid]["error"] = r["error"]
-        if task_states[tid]["status"] in ("queued", "running"):
-            all_done = False
-
-    lines = []
-    for state in task_states.values():
-        s, n = state["status"], state["name"]
-        if s == "complete":
-            lines.append(f"✅ **{n}** — {state.get('chunks', '?')} chunks")
-        elif s == "failed":
-            err = state.get("error", "Failed")
-            lines.append(f"❌ **{n}** — {err}")
-            if (n, err) not in [(f, e) for f, e in failed_files]:
-                failed_files.append((n, err))
-        elif s == "running":
-            lines.append(f"⏳ **{n}** — embedding...")
-        else:
-            lines.append(f"🔵 **{n}** — queued")
-    st.markdown("\n\n".join(lines))
-
-    if all_done:
-        st.session_state.embed_poll_state = None
-        st.session_state.upload_failures = failed_files
-        if not failed_files:
-            st.toast("Embedding complete!", icon="✅")
-        st.session_state.user_uploads = requests.get(
-            f"{st.session_state.server_ip}/uploads",
-            params={"user_id": "public"}
-        ).json().get("files", [])
-        st.rerun(scope="app")
-
-
 def write_as_ai(text):
     with st.chat_message(name='assistant', avatar='assistant'):
         st.markdown(text)
@@ -284,11 +228,11 @@ def poll_embed_task(task_id: str) -> dict:
 
 
 def handle_uploaded_files(uploaded_files) -> bool:
-    """Upload files and queue embed jobs. Polling is handled by the sidebar on subsequent reruns."""
+    """Handle the uploaded files by uploading them to the server and embedding their content."""
     try:
         failed_files = []
 
-        # --- Phase 1: Upload all files ---
+        # --- Phase 1: Upload all files (fast) ---
         with st.status("Uploading files...", expanded=True) as status_box:
             uploaded = []   # [(original_name, server_file_name)]
             for i, file in enumerate(uploaded_files):
@@ -302,31 +246,62 @@ def handle_uploaded_files(uploaded_files) -> bool:
                     failed_files.append((file.name, f"Upload failed: {result}"))
             status_box.update(label=f"Uploaded {len(uploaded)}/{len(uploaded_files)} files", state="complete", expanded=False)
 
-        # --- Phase 2: Queue embed jobs (returns immediately with task_ids) ---
-        task_states = {}
+        # --- Phase 2: Queue all embed jobs (fast — server returns task_id immediately) ---
+        tasks = []   # [(original_name, task_id)]
         for orig_name, server_name in uploaded:
             ok, result = start_embed(server_name)
             if ok:
-                task_states[result] = {"name": orig_name, "status": "queued"}
+                tasks.append((orig_name, result))
             else:
                 failed_files.append((orig_name, f"Failed to queue embed: {result}"))
 
-        # Store task state — polling runs on subsequent reruns via the sidebar
-        if task_states:
-            st.session_state.embed_poll_state = {
-                "tasks": task_states,
-                "failed_files": failed_files,
-                "start_time": time.time(),
-            }
-        else:
-            st.session_state.upload_failures = failed_files
+        # --- Phase 3: Poll all tasks with live progress display ---
+        if tasks:
+            progress_placeholder = st.empty()
+            task_states = {task_id: {"name": name, "status": "queued"} for name, task_id in tasks}
 
-        # Files are in SQLite immediately after upload, so refresh now
+            while True:
+                all_done = True
+                for task_id, state in task_states.items():
+                    if state["status"] in ("queued", "running"):
+                        result = poll_embed_task(task_id)
+                        task_states[task_id]["status"] = result.get("status", "failed")
+                        if result.get("chunks"):
+                            task_states[task_id]["chunks"] = result["chunks"]
+                        if result.get("error"):
+                            task_states[task_id]["error"] = result["error"]
+                    if task_states[task_id]["status"] in ("queued", "running"):
+                        all_done = False
+
+                # Build live status display
+                lines = []
+                for state in task_states.values():
+                    s = state["status"]
+                    name = state["name"]
+                    if s == "complete":
+                        lines.append(f"✅ **{name}** — {state.get('chunks', '?')} chunks")
+                    elif s == "failed":
+                        lines.append(f"❌ **{name}** — {state.get('error', 'Failed')}")
+                        if (name, state.get("error", "Embedding failed")) not in [(f, e) for f, e in failed_files]:
+                            failed_files.append((name, state.get("error", "Embedding failed")))
+                    elif s == "running":
+                        lines.append(f"⏳ **{name}** — embedding...")
+                    else:
+                        lines.append(f"🔵 **{name}** — queued")
+
+                progress_placeholder.markdown("\n\n".join(lines))
+
+                if all_done:
+                    break
+                time.sleep(3)
+
+        # Refresh file list
         st.session_state.user_uploads = requests.get(
             f"{st.session_state.server_ip}/uploads",
             params={"user_id": "public"}
         ).json().get("files", [])
 
+        st.session_state.upload_failures = failed_files
         return True
 
     except Exception as e:
@@ -473,9 +448,6 @@ with st.sidebar.container(border=True):
 # Files Panel:
 st.sidebar.subheader("📂 Files")
 
-with st.sidebar:
-    render_embed_progress()
-
 if user_role == "admin":
     # Admin: full file management controls
     sidebar_uploads = st.sidebar.file_uploader(
@@ -487,6 +459,8 @@ if user_role == "admin":
     )
     if st.sidebar.button("Upload & Embed", type="primary", disabled=not sidebar_uploads):
         if handle_uploaded_files(sidebar_uploads):
+            if not st.session_state.get("upload_failures"):
+                st.toast("Files processed successfully!", icon="✅")
             st.session_state.uploader_key += 1
             st.rerun()
 

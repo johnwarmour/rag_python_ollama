@@ -10,7 +10,7 @@ _logger_instances = {}
 
 def get_logger(
     name: str = "unset",
-    log_to_console: bool = True,
+    log_to_console: bool = False,
     log_to_file: bool = True,
     log_file: Optional[str] = "app.log",
 ) -> logging.Logger:
@@ -52,7 +52,7 @@ def get_logger(
     # Console Handler
     if log_to_console:
         console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
+        console_handler.setLevel(logging.WARNING)
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
 
