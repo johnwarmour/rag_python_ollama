@@ -62,13 +62,6 @@ DOCS_NUM_COUNT: int = 3000 // DOC_TOKEN_SIZE            # Max num of docs to ret
 VECTOR_DB_PERSIST_DIR: str = "user_faiss"            # Path to persist the vector DB.
 VECTOR_DB_INDEX_NAME: str = "index.faiss"               # Name of the vector DB file.
 
-# Rate limiting:
-# Enable when switching to an external/paid LLM API to control costs.
-# Limits apply per user_id on the /rag endpoint.
-RATE_LIMIT_ENABLED: bool = False
-RATE_LIMIT_REQUESTS_PER_MINUTE: int = 10
-
-
 # Dummy response mode properties:
 TOKENS_PER_SEC: int = 50                                # num of tokens yielded per sec
 BATCH_TOKEN_PS: int = 2                                 # num of tokens yielded in each batch
