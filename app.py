@@ -150,9 +150,6 @@ if "initialized" not in st.session_state:
     # Last resp retrieved docs:
     st.session_state.last_retrieved_docs = []
 
-    # Key counter to reset file uploader after a successful upload run:
-    st.session_state.uploader_key = 0
-
     # Set flag to true:
     st.session_state.initialized = True
 
@@ -458,13 +455,11 @@ if user_role == "admin":
         type=['pdf', 'txt', 'md'],
         accept_multiple_files=True,
         label_visibility="collapsed",
-        key=f"file_uploader_{st.session_state.uploader_key}",
     )
     if st.sidebar.button("Upload & Embed", type="primary", disabled=not sidebar_uploads):
         if handle_uploaded_files(sidebar_uploads):
             if not st.session_state.get("upload_failures"):
                 st.toast("Files processed successfully!", icon="✅")
-            st.session_state.uploader_key += 1
             st.rerun()
 
     # Show any failures from the previous upload run (persists across rerun)
