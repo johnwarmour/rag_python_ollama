@@ -42,6 +42,7 @@ class Message:
 
 
 # Get user_id:
+breakpoint()
 if "session_id" not in st.session_state:
 
     try:
