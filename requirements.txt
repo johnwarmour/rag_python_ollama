@@ -5,6 +5,7 @@ langchain-community==0.3.24
 langchain-core==0.3.60
 langchain-text-splitters==0.3.8
 PyMuPDF==1.25.5
+pymupdf4llm==0.0.17
 unstructured==0.17.2
 Markdown==3.8
 faiss-cpu==1.11.0

@@ -48,8 +48,8 @@ VERIFY_EMB_CONNECTION: bool = False
 
 
 # Document Chunking properties:
-DOC_CHAR_LIMIT: int = 1500                              # Char limit for each doc.
-DOC_OVERLAP_NO: int = 300                               # Char limit for chunk overlap.
+DOC_CHAR_LIMIT: int = 2000                              # Char limit for each doc.
+DOC_OVERLAP_NO: int = 200                               # Char limit for chunk overlap.
 EMBED_BATCH_SIZE: int = 32                              # Num of chunks to embed per batch.
 
 

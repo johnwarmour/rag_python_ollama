@@ -10,8 +10,9 @@ Planning to add more file types in the future.
 import os
 from typing import List
 from langchain_core.documents import Document
-from langchain_community.document_loaders import TextLoader, PyMuPDFLoader
+from langchain_community.document_loaders import TextLoader
 from langchain_community.document_loaders import UnstructuredMarkdownLoader
+import pymupdf4llm
 
 from logger import get_logger
 log = get_logger(name="doc_loader")
@@ -40,15 +41,24 @@ def load_file(user_id: str, file_path: str) -> tuple[bool, List[Document], str]:
 
     if file_path.endswith('.txt'):
         loader = TextLoader(file_path, encoding='utf-8')
+        file_content = loader.load()
 
     elif file_path.endswith('.md'):
         loader = UnstructuredMarkdownLoader(file_path)
+        file_content = loader.load()
 
     else:
-        loader = PyMuPDFLoader(file_path, extract_images=False)
-
-    # Load the file and return the documents
-    file_content = loader.load()
+        # pymupdf4llm converts each page to markdown, preserving tables as
+        # pipe-delimited markdown tables rather than garbled raw text.
+        pages = pymupdf4llm.to_markdown(file_path, page_chunks=True)
+        file_content = [
+            Document(
+                page_content=page["text"],
+                metadata={"source": os.path.basename(file_path), "page": i},
+            )
+            for i, page in enumerate(pages)
+            if page["text"].strip()
+        ]
 
     # Add user metadata to each doc:
     for doc in file_content:
