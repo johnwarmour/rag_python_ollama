@@ -92,17 +92,8 @@ class VectorDB:
             self.db = FAISS.from_documents([dummy_doc], embedding=self.embeddings)
             log.info("Created a new FAISS vector store in memory with a dummy document.")
 
-        # self.retriever = self.db.as_retriever(
-        #     search_type="similarity",
-        #     search_kwargs={"k": retriever_num_docs, "filter":{"user_id": "public"}},
-        # )
-        # log.info(f"Created retriever with k={retriever_num_docs}.")
-
-        # Simple retriever does not have way to pass some filters with rag_chain.invoke()
-        # Basically no way to pass args at runtime
-        # Hence, using configurable retriever:
-        # https://github.com/langchain-ai/langchain/issues/9195#issuecomment-2095196865
-        # retriever = self.db.as_retriever()
+        # Configurable retriever allows search_kwargs (k, filter) to be set at
+        # runtime per-request, which is needed for per-user filtering.
         retriever = self.db.as_retriever(search_type="similarity")
         configurable_retriever = retriever.configurable_fields(
             search_kwargs=ConfigurableField(
@@ -111,24 +102,6 @@ class VectorDB:
                 description="The search kwargs to use",
             )
         )
-
-        # call it like this:
-        # configurable_retriever.invoke(
-        #     input="What is the Sun?",
-        #     config={"configurable": {
-        #         "search_kwargs": {
-        #             "k": 5,
-        #             "search_type": "similarity",
-        #             # And here comes the main thing:
-        #             "filter": {
-        #                 "$or": [
-        #                     {"user_id": "curious_cat"},
-        #                     {"user_id": "public"}
-        #                 ]
-        #             },
-        #         }
-        #     }}
-        # )
 
         self.retriever = configurable_retriever
         log.info(f"Created configurable retriever.")
