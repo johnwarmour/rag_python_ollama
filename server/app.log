@@ -4,3 +4,38 @@
 28-02-26 21:14:25.442 [INFO    ] [sq_db] Logger initialized. [File: 'app.log', Console: 'No']
 28-02-26 21:14:26.013 [INFO    ] [sq_db] Database tables created successfully.
 28-02-26 21:14:35.776 [ERROR   ] [sq_db] SQLite error while adding user 'j' with ID 'jwa': UNIQUE constraint failed: users.user_id
+22-03-26 21:36:00.962 [INFO    ] [core_sanitizer] Logger initialized. [File: 'app.log', Console: 'No']
+22-03-26 21:36:02.332 [INFO    ] [core_llm] Logger initialized. [File: 'app.log', Console: 'No']
+22-03-26 21:36:02.333 [INFO    ] [core_llm] Loaded 3 dummy responses for testing.
+22-03-26 21:36:03.431 [INFO    ] [core_database] Logger initialized. [File: 'app.log', Console: 'No']
+22-03-26 21:36:03.454 [INFO    ] [core_history] Logger initialized. [File: 'app.log', Console: 'No']
+22-03-26 21:36:03.834 [INFO    ] [chains_prompts] Logger initialized. [File: 'app.log', Console: 'No']
+22-03-26 21:36:03.834 [INFO    ] [chains_prompts] Initialized chat and summarize prompt templates.
+22-03-26 21:36:03.837 [INFO    ] [chains_rag] Logger initialized. [File: 'app.log', Console: 'No']
+22-03-26 21:36:03.910 [INFO    ] [doc_loader] Logger initialized. [File: 'app.log', Console: 'No']
+22-03-26 21:36:03.915 [INFO    ] [utils_splitter] Logger initialized. [File: 'app.log', Console: 'No']
+22-03-26 21:36:03.916 [INFO    ] [core_ingestion] Logger initialized. [File: 'app.log', Console: 'No']
+22-03-26 21:36:03.996 [INFO    ] [sq_db] Logger initialized. [File: 'app.log', Console: 'No']
+22-03-26 21:36:07.372 [INFO    ] [FILES] Logger initialized. [File: 'app.log', Console: 'No']
+22-03-26 21:36:07.375 [INFO    ] [rag_server] Logger initialized. [File: 'app.log', Console: 'No']
+22-03-26 21:36:07.397 [INFO    ] [rag_server] [LifeSpan] Starting the server components.
+22-03-26 21:36:07.397 [INFO    ] [core_llm] Initializing LLM(provider=ollama, model=gemma3:12b, temp=0.1)
+22-03-26 21:36:07.410 [WARNING ] [core_llm] LLM model 'gemma3:12b' initialized without connection verification.
+22-03-26 21:36:07.410 [INFO    ] [core_llm] Initializing the output parser for LLM responses.
+22-03-26 21:36:07.410 [INFO    ] [core_database] Initializing VectorDB with embeddings='bge-m3:latest', path='user_faiss', k=8 docs.
+22-03-26 21:36:07.429 [WARNING ] [core_database] Embeddings 'bge-m3:latest' initialized without connection verification.
+22-03-26 21:36:08.103 [INFO    ] [core_database] Created a new FAISS vector store on disk with a dummy document.
+22-03-26 21:36:08.104 [INFO    ] [core_database] Created configurable retriever.
+22-03-26 21:36:08.104 [INFO    ] [core_history] Initialized HistoryStore with an empty history dictionary.
+22-03-26 21:36:08.104 [INFO    ] [core_database] Returning the retriever for similarity search.
+22-03-26 21:36:08.104 [INFO    ] [chains_rag] Building the Conversational RAG Chain...
+22-03-26 21:36:08.104 [INFO    ] [chains_rag] Created the retriever chain with summarization.
+22-03-26 21:36:08.107 [INFO    ] [chains_rag] Created the QA chain with chat template.
+22-03-26 21:36:08.107 [INFO    ] [chains_rag] Created the main RAG chain.
+22-03-26 21:36:08.107 [INFO    ] [chains_rag] Returning the final Conversational RAG Chain w history.
+22-03-26 21:36:08.125 [INFO    ] [rag_server] [LifeSpan] All LLM components initialized.
+22-03-26 21:36:08.126 [INFO    ] [rag_server] [LifeSpan] Embed background worker started.
+22-03-26 21:36:08.131 [INFO    ] [sq_db] Database tables created successfully.
+22-03-26 21:36:08.132 [INFO    ] [FILES] Uploads folder created at: /Users/jwarmour/code/personal/rag-with-gemma3/server/user_uploads
+22-03-26 21:36:08.134 [INFO    ] [FILES] Uploads folder created for user public at: /Users/jwarmour/code/personal/rag-with-gemma3/server/user_uploads/public
+22-03-26 21:41:27.775 [INFO    ] [rag_server] [LifeSpan] Shutting down LLM server...
