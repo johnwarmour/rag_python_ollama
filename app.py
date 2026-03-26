@@ -77,10 +77,11 @@ if "session_id" not in st.session_state:
                     )
 
                     if resp.status_code == 200:
-                        session_id = resp.json().get("user_id")
+                        resp_data = resp.json()
+                        session_id = resp_data.get("user_id")
                         st.session_state.session_id = session_id
-                        st.session_state.name_of_user = resp.json().get("name", session_id)
-                        st.session_state.role = resp.json().get("role", "user")
+                        st.session_state.name_of_user = resp_data.get("name", session_id)
+                        st.session_state.role = resp_data.get("role", "user")
 
                         st.success("Login successful!", icon="✅")
                         st.rerun()
@@ -520,6 +521,7 @@ if user_role == "admin":
                 else:
                     ok, msg = add_user_account(new_name, new_uid, new_pw)
                     if ok:
+                        st.session_state.pop("managed_users", None)
                         st.toast(f"User '{new_uid}' created.", icon="✅")
                         st.rerun()
                     else:
@@ -527,25 +529,27 @@ if user_role == "admin":
 
         st.divider()
 
-        # List existing regular users:
-        try:
-            users_resp = requests.get(
-                f"{server_ip}/admin/users",
-                params={"admin_id": user_id}
-            )
-            managed_users = users_resp.json().get("users", []) if users_resp.status_code == 200 else []
-        except Exception:
-            managed_users = []
+        # List existing regular users (cached in session state, refreshed after mutations):
+        if "managed_users" not in st.session_state:
+            try:
+                users_resp = requests.get(
+                    f"{server_ip}/admin/users",
+                    params={"admin_id": user_id}
+                )
+                st.session_state.managed_users = users_resp.json().get("users", []) if users_resp.status_code == 200 else []
+            except Exception:
+                st.session_state.managed_users = []
 
-        if not managed_users:
+        if not st.session_state.managed_users:
             st.caption("No regular users yet.")
         else:
-            for u in managed_users:
+            for u in st.session_state.managed_users:
                 u_col, btn_col = st.columns([7, 3])
                 u_col.caption(u["name"])
                 if btn_col.button("🗑️", key=f"del_user_{u['user_id']}", help=f"Delete {u['user_id']}"):
                     ok, msg = delete_user_account(u["user_id"])
                     if ok:
+                        st.session_state.pop("managed_users", None)
                         st.toast(f"Deleted user '{u['user_id']}'", icon="✅")
                         st.rerun()
                     else:
@@ -611,8 +615,7 @@ for ind, message in enumerate(st.session_state.chat_history):
                 with st.container(border=True):
                     # Thinking:
                     if thoughts:
-                        cont_thoughts = st.popover(
-                            "💭 Thoughts", use_container_width=False).markdown(thoughts)
+                        st.popover("💭 Thoughts", use_container_width=False).markdown(thoughts)
                     # Answer:
                     st.markdown(answer)
                     # Documents:
@@ -692,6 +695,7 @@ if user_message := st.chat_input(
                 resp_holder = st.container(border=True)
                 document_holder = resp_holder.empty()
                 reply_holder = resp_holder.empty()
+                last_doc_count = 0
 
                 for chunk in response.iter_content(chunk_size=None):
                     if chunk:
@@ -711,10 +715,10 @@ if user_message := st.chat_input(
                             st.error(decoded['data'])
                             continue
 
-                        if documents:
+                        if len(documents) != last_doc_count:
+                            last_doc_count = len(documents)
                             docs = document_holder.expander("🗃️ Sources", expanded=True)
-                            tabs = docs.tabs(
-                                tabs=[f"Source {i+1}" for i in range(len(documents))])
+                            tabs = docs.tabs([f"Source {i+1}" for i in range(len(documents))])
                             for i, doc in enumerate(documents):
                                 with tabs[i]:
                                     render_source_doc(doc)
