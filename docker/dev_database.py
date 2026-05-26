@@ -83,8 +83,10 @@ class VectorDB:
 
             if not os.path.exists(database_file):
                 self.db = FAISS.from_documents([dummy_doc], embedding=self.embeddings)
+                dummy_ids = list(self.db.index_to_docstore_id.values())
+                self.db.delete(dummy_ids)
                 self.db.save_local(persist_path)
-                log.info("Created a new FAISS vector store on disk with a dummy document.")
+                log.info("Created a new FAISS vector store on disk.")
             else:
                 log.info(f"Found existing FAISS vector store at '{database_file}'.")
                 self.db = FAISS.load_local(
@@ -93,7 +95,9 @@ class VectorDB:
         # Create one temp, in memory, FAISS vector store:
         else:
             self.db = FAISS.from_documents([dummy_doc], embedding=self.embeddings)
-            log.info("Created a new FAISS vector store in memory with a dummy document.")
+            dummy_ids = list(self.db.index_to_docstore_id.values())
+            self.db.delete(dummy_ids)
+            log.info("Created a new FAISS vector store in memory.")
 
         # self.retriever = self.db.as_retriever(
         #     search_type="similarity",
