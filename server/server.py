@@ -80,6 +80,13 @@ def embed_worker():
     Sequential processing avoids FAISS race conditions on concurrent writes.
     """
     while True:
+        now = time.time()
+        with embed_task_lock:
+            stale = [tid for tid, t in embed_tasks.items()
+                     if t.get("finished_at") and now - t["finished_at"] > 300]
+            for tid in stale:
+                del embed_tasks[tid]
+
         task = embed_queue.get(block=True)
         task_id = task["task_id"]
 
@@ -96,7 +103,7 @@ def embed_worker():
 
             if status and not doc_ids:
                 with embed_task_lock:
-                    embed_tasks[task_id] = {"status": "failed", "error": f"No embeddable content found in '{task['file_name']}'"}
+                    embed_tasks[task_id] = {"status": "failed", "error": f"No embeddable content found in '{task['file_name']}'", "finished_at": time.time()}
 
             elif status:
                 file_id = sq_db.get_file_id_by_name(user_id=task["user_id"], file_name=task["file_name"])
@@ -104,17 +111,17 @@ def embed_worker():
                     sq_db.add_embedding(file_id=file_id, vector_id=vid)
                 log.info(f"[embed_worker] Completed '{task['file_name']}' ({len(doc_ids)} chunks)")
                 with embed_task_lock:
-                    embed_tasks[task_id] = {"status": "complete", "chunks": len(doc_ids)}
+                    embed_tasks[task_id] = {"status": "complete", "chunks": len(doc_ids), "finished_at": time.time()}
 
             else:
                 log.error(f"[embed_worker] Failed '{task['file_name']}': {message}")
                 with embed_task_lock:
-                    embed_tasks[task_id] = {"status": "failed", "error": message}
+                    embed_tasks[task_id] = {"status": "failed", "error": message, "finished_at": time.time()}
 
         except Exception as e:
             log.error(f"[embed_worker] Unexpected error for '{task['file_name']}': {e}")
             with embed_task_lock:
-                embed_tasks[task_id] = {"status": "failed", "error": str(e)}
+                embed_tasks[task_id] = {"status": "failed", "error": str(e), "finished_at": time.time()}
 
         finally:
             embed_queue.task_done()
