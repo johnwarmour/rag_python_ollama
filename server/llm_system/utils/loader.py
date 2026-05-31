@@ -32,12 +32,12 @@ def load_file(user_id: str, file_path: str) -> tuple[bool, List[Document], str]:
             - str: Message indicating the result of the loading operation.
     """
 
-    # Planning to add many types in future, but for now, only txt and pdf are supported:
-    file_extension = file_path.split('.')[-1].lower()
+    _, ext = os.path.splitext(file_path)
+    file_extension = ext.lstrip('.').lower()
 
-    if file_extension not in ['txt', 'pdf', "md"]:
+    if file_extension not in ['txt', 'pdf', 'md']:
         log.error(f"Unsupported file type: {file_extension}.")
-        return False, [], f"Unsupported file type: {file_extension}. Supported types are: txt, pdf."
+        return False, [], f"Unsupported file type: {file_extension}. Supported types are: txt, pdf, md."
 
     if file_path.endswith('.txt'):
         loader = TextLoader(file_path, encoding='utf-8')
