@@ -395,6 +395,23 @@ def add_user_account(name: str, new_user_id: str, password: str) -> tuple[bool, 
         return False, str(e)
 
 
+def render_file_preview():
+    if not st.session_state.user_uploads:
+        return
+    st.sidebar.divider()
+    selected_file = st.sidebar.selectbox(
+        label="Preview File",
+        index=0,
+        options=st.session_state.user_uploads,
+    )
+    if st.sidebar.button("Show Preview"):
+        status, content = get_iframe(selected_file)
+        if status:
+            st.sidebar.markdown(content, unsafe_allow_html=True)
+        else:
+            st.sidebar.error(f"Error: **{content}**", icon="🚫")
+
+
 def delete_user_account(target_user_id: str) -> tuple[bool, str]:
     """Delete a regular user account via the admin API."""
     try:
@@ -468,19 +485,7 @@ if user_role == "admin":
                 else:
                     st.sidebar.error(f"Error: {msg}", icon="🚫")
 
-        # Preview section:
-        st.sidebar.divider()
-        selected_file = st.sidebar.selectbox(
-            label="Preview File",
-            index=0,
-            options=st.session_state.user_uploads,
-        )
-        if st.sidebar.button("Show Preview"):
-            status, content = get_iframe(selected_file)
-            if status:
-                st.sidebar.markdown(content, unsafe_allow_html=True)
-            else:
-                st.sidebar.error(f"Error: **{content}**", icon="🚫")
+        render_file_preview()
 
 else:
     # Regular user: read-only view of the shared library
@@ -490,19 +495,7 @@ else:
         for file_name in st.session_state.user_uploads:
             st.sidebar.caption(file_name)
 
-        # Preview section:
-        st.sidebar.divider()
-        selected_file = st.sidebar.selectbox(
-            label="Preview File",
-            index=0,
-            options=st.session_state.user_uploads,
-        )
-        if st.sidebar.button("Show Preview"):
-            status, content = get_iframe(selected_file)
-            if status:
-                st.sidebar.markdown(content, unsafe_allow_html=True)
-            else:
-                st.sidebar.error(f"Error: **{content}**", icon="🚫")
+        render_file_preview()
 
 st.sidebar.divider()
 
