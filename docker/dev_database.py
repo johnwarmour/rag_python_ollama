@@ -89,8 +89,10 @@ class VectorDB:
                 log.info("Created a new FAISS vector store on disk.")
             else:
                 log.info(f"Found existing FAISS vector store at '{database_file}'.")
+                index_base_name = index_name[:-6] if index_name.endswith('.faiss') else index_name
                 self.db = FAISS.load_local(
-                    persist_path, self.embeddings, allow_dangerous_deserialization=True)
+                    persist_path, self.embeddings, index_name=index_base_name,
+                    allow_dangerous_deserialization=True)
 
         # Create one temp, in memory, FAISS vector store:
         else:
